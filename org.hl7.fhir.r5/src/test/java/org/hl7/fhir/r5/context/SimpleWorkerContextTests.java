@@ -14,11 +14,14 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.hl7.fhir.r5.model.CapabilityStatement;
+import org.hl7.fhir.r5.model.CodeType;
 import org.hl7.fhir.r5.model.CodeableConcept;
 import org.hl7.fhir.r5.model.Coding;
 import org.hl7.fhir.r5.model.Enumerations;
 import org.hl7.fhir.r5.model.Parameters;
+import org.hl7.fhir.r5.model.StringType;
 import org.hl7.fhir.r5.model.TerminologyCapabilities;
+import org.hl7.fhir.r5.model.UriType;
 import org.hl7.fhir.r5.model.ValueSet;
 import org.hl7.fhir.r5.terminologies.TerminologyClient;
 import org.hl7.fhir.r5.terminologies.ValueSetCheckerSimple;
@@ -194,6 +197,37 @@ public class SimpleWorkerContextTests {
     Mockito.verify(terminologyCache).getValidation(cacheToken);
     Mockito.verify(terminologyCache).cacheValidation(cacheToken, expectedValidationResult,true);
   }
+
+  @Test
+  public void testValidateCodingServerResponseProcesssing() throws IOException {
+    final ValidationOptions validationOptions = new ValidationOptions().guessSystem().setVersionFlexible(false).noClient();
+    final ValueSet valueSet = new ValueSet();
+    final String system = "http://acme.org/cs";
+    final String code = "123";
+    final String display = "Display";
+    final Coding coding = new Coding().setSystem(system).setCode(code).setDisplay(display);
+    final Parameters pIn = new Parameters();
+    final Parameters pOut = new Parameters();
+    pOut.addParameter("result", true);
+    pOut.addParameter("system", new UriType(system));
+    pOut.addParameter("code", new CodeType(code));
+    pOut.addParameter("display", new StringType(display));
+
+    Mockito.doReturn(cacheToken).when(terminologyCache).generateValidationToken(validationOptions, coding, valueSet);
+    Mockito.doReturn(pIn).when(context).constructParameters(validationOptions, coding);
+    Mockito.doReturn(pOut).when(terminologyClient).validateVS(pIn);
+
+    final ValidationContextCarrier ctxt = mock(ValidationContextCarrier.class);
+
+    final IWorkerContext.ValidationResult actualValidationResult = context.validateCode(validationOptions, coding, valueSet, ctxt);
+
+    assertEquals(system, actualValidationResult.getSystem());
+    assertEquals(code, actualValidationResult.getCode());
+
+    Mockito.verify(valueSetCheckerSimple, times(0)).validateCode(coding);
+    Mockito.verify(terminologyCache).getValidation(cacheToken);
+  }
+
 
   @Test
   public void testValidateCodableConceptWithCache() throws IOException {
