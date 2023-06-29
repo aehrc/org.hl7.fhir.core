@@ -123,7 +123,8 @@ public class Manager {
     case VBAR : return new VerticalBarParser(context);
     case SHC : return new SHCParser(context);
     case FML : return new FmlParser(context);
-    case TEXT : throw new Error("Programming logic error: do not call makeParser for a text resource");
+    case TEXT : return new CsvParser(context);
+//	    throw new Error("Programming logic error: do not call makeParser for a text resource");
     }
     return null;
   }

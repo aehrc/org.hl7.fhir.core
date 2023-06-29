@@ -73,6 +73,9 @@ public class ResourceChecker {
         }
         return Manager.FhirFormat.TEXT;
       }
+      if (Utilities.existsInList(ext, "csv")) {
+        return FhirFormat.TEXT;
+      }
     }
 
     try {

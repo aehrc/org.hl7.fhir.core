@@ -69,6 +69,13 @@
 			<optional>true</optional>
 		</dependency>
 
+		<!-- CSV Parsers -->
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-csv</artifactId>
+			<optional>true</optional>
+		</dependency>
+
 		<!-- Apache POI -->
 		<dependency>
 			<groupId>org.apache.poi</groupId>
