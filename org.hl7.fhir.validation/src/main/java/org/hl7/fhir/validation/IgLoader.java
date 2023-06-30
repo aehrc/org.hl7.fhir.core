@@ -196,6 +196,8 @@ public class IgLoader implements IValidationEngineLoader {
         res.setCntType(Manager.FhirFormat.TEXT);
       else if (t.getKey().endsWith(".fml") || t.getKey().endsWith(".map"))
         res.setCntType(Manager.FhirFormat.FML);
+      else if (t.getKey().endsWith(".csv"))
+        res.setCntType(Manager.FhirFormat.CSV);
       else
         throw new FHIRException("Todo: Determining resource type is not yet done");
     }
