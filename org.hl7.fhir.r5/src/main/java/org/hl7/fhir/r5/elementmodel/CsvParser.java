@@ -1,6 +1,8 @@
 package org.hl7.fhir.r5.elementmodel;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -11,6 +13,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
 
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
@@ -29,7 +32,7 @@ import org.hl7.fhir.r5.model.StructureDefinition.TypeDerivationRule;
 import org.hl7.fhir.r5.utils.FHIRPathEngine;
 
 public class CsvParser extends ParserBase {
-  public static final String CSV_SD_URI = "http://hl7.org/fhir/StructureDefinition/CSV";
+  public static final String CSV_SD_URI = "http://hl7.org/fhir/tools/StructureDefinition/CSV";
 
   final private static String CSV = "CSV";
   final private static String RECORD = "CSV.record";
@@ -49,13 +52,42 @@ public class CsvParser extends ParserBase {
       throws IOException, FHIRFormatError, DefinitionException, FHIRException {
     final List<NamedElement> res = new ArrayList<>();
 
-    final BufferedReader reader = new BufferedReader(new InputStreamReader(stream));
-    try (final CSVParser parser = CSVParser.parse(reader, CSVFormat.RFC4180.withFirstRecordAsHeader())) {
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    stream.transferTo(baos);
+
+    InputStream firstClone = new ByteArrayInputStream(baos.toByteArray()); 
+    InputStream secondClone = new ByteArrayInputStream(baos.toByteArray());
+
+    final BufferedReader dectectReader = new BufferedReader(new InputStreamReader(firstClone));
+
+    final String firstLine = dectectReader.readLine();
+    int countSemicolon = 0;
+    int countComma = 0;
+    char delimiter = ',';
+    if (firstLine != null) {
+      for (int i = 0; i < firstLine.length(); i++) {
+        final char c = firstLine.charAt(i);
+        if (c == ';') {
+          ++countSemicolon;
+        }
+        if (c == ',') {
+          ++countComma;
+        }
+      }
+    }
+ 
+    if (countSemicolon > countComma) {
+      delimiter = ';';
+    }
+ 
+    final BufferedReader reader = new BufferedReader(new InputStreamReader(secondClone));
+
+    try (final CSVParser parser = CSVParser.parse(reader, CSVFormat.RFC4180.withFirstRecordAsHeader().withDelimiter(delimiter))) {
       final String[] headers;
 
       final ElementDefinition recordDefinition;
 
-      if (CSV_SD_URI.equals(logical.getUrl())) {
+      if (logical == null || CSV_SD_URI.equals(logical.getUrl())) {
         final List<String> names = parser.getHeaderNames();
 
         headers = names.toArray(new String[names.size()]);
