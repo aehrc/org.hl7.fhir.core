@@ -82,8 +82,6 @@ public class CsvParser extends ParserBase {
         headers = names.toArray(new String[names.size()]);
       }
 
-      final Map<String,String> data = new HashMap<>();
-
       final String name = logical.getType();
 
       final ElementDefinition rootDefinition = logical.getSnapshot().getElementFirstRep();
@@ -92,6 +90,8 @@ public class CsvParser extends ParserBase {
       rootElement.setPath(rootElement.fhirTypeRoot());
 
       parser.forEach(r -> {
+	final Map<String,String> data = new HashMap<>();
+
         for (int i = 0; i < r.size(); i++) {
           final String f = r.get(i);
           if (!f.isBlank()) {
