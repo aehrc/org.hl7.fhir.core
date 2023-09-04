@@ -1344,7 +1344,7 @@ public class Element extends Base {
       }
     }
 
-    throw new Error("Unrecognised name "+name+" on "+this.name); 
+    throw new Error("Unrecognised property '"+name+"' on "+this.name); 
   }
 
   @Override
@@ -1417,9 +1417,6 @@ public class Element extends Base {
     return webPath;
   }
   public void setWebPath(String webPath) {
-    if (webPath != null && webPath.startsWith("file:")) {
-      System.out.println("!"); // FIXME
-    }
     this.webPath = webPath;
   }
 

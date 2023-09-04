@@ -1,5 +1,50 @@
 package org.hl7.fhir.dstu3.utils;
 
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.fhir.ucum.Decimal;
+import org.fhir.ucum.UcumException;
+import org.hl7.fhir.dstu3.context.IWorkerContext;
+import org.hl7.fhir.dstu3.model.Base;
+import org.hl7.fhir.dstu3.model.BooleanType;
+import org.hl7.fhir.dstu3.model.DateTimeType;
+import org.hl7.fhir.dstu3.model.DateType;
+import org.hl7.fhir.dstu3.model.DecimalType;
+import org.hl7.fhir.dstu3.model.ElementDefinition;
+import org.hl7.fhir.dstu3.model.ElementDefinition.TypeRefComponent;
+import org.hl7.fhir.dstu3.model.ExpressionNode;
+import org.hl7.fhir.dstu3.model.ExpressionNode.CollectionStatus;
+import org.hl7.fhir.dstu3.model.ExpressionNode.Function;
+import org.hl7.fhir.dstu3.model.ExpressionNode.Kind;
+import org.hl7.fhir.dstu3.model.ExpressionNode.Operation;
+import org.hl7.fhir.dstu3.model.ExpressionNode.SourceLocation;
+import org.hl7.fhir.dstu3.model.IntegerType;
+import org.hl7.fhir.dstu3.model.Property;
+import org.hl7.fhir.dstu3.model.Resource;
+import org.hl7.fhir.dstu3.model.StringType;
+import org.hl7.fhir.dstu3.model.StructureDefinition;
+import org.hl7.fhir.dstu3.model.StructureDefinition.StructureDefinitionKind;
+import org.hl7.fhir.dstu3.model.StructureDefinition.TypeDerivationRule;
+import org.hl7.fhir.dstu3.model.TimeType;
+import org.hl7.fhir.dstu3.model.TypeDetails;
+import org.hl7.fhir.dstu3.model.TypeDetails.ProfiledType;
+import org.hl7.fhir.dstu3.utils.FHIRLexer.FHIRLexerException;
+import org.hl7.fhir.dstu3.utils.FHIRPathUtilityClasses.FunctionDetails;
+import org.hl7.fhir.dstu3.utils.FHIRPathUtilityClasses.ExecutionContext;
+import org.hl7.fhir.dstu3.utils.FHIRPathUtilityClasses.ExecutionTypeContext;
+import org.hl7.fhir.exceptions.DefinitionException;
+import org.hl7.fhir.exceptions.FHIRException;
+import org.hl7.fhir.exceptions.PathEngineException;
+import org.hl7.fhir.utilities.Utilities;
+
 /*
   Copyright (c) 2011+, HL7, Inc.
   All rights reserved.
@@ -34,24 +79,6 @@ package org.hl7.fhir.dstu3.utils;
 import ca.uhn.fhir.model.api.TemporalPrecisionEnum;
 import ca.uhn.fhir.rest.server.exceptions.InternalErrorException;
 import ca.uhn.fhir.util.ElementUtil;
-import org.fhir.ucum.Decimal;
-import org.fhir.ucum.UcumException;
-import org.hl7.fhir.dstu3.context.IWorkerContext;
-import org.hl7.fhir.dstu3.model.*;
-import org.hl7.fhir.dstu3.model.ElementDefinition.TypeRefComponent;
-import org.hl7.fhir.dstu3.model.ExpressionNode.*;
-import org.hl7.fhir.dstu3.model.StructureDefinition.StructureDefinitionKind;
-import org.hl7.fhir.dstu3.model.StructureDefinition.TypeDerivationRule;
-import org.hl7.fhir.dstu3.model.TypeDetails.ProfiledType;
-import org.hl7.fhir.dstu3.utils.FHIRLexer.FHIRLexerException;
-import org.hl7.fhir.dstu3.utils.FHIRPathEngine.IEvaluationContext.FunctionDetails;
-import org.hl7.fhir.exceptions.DefinitionException;
-import org.hl7.fhir.exceptions.FHIRException;
-import org.hl7.fhir.exceptions.PathEngineException;
-import org.hl7.fhir.utilities.Utilities;
-
-import java.math.BigDecimal;
-import java.util.*;
 
 /**
  *
@@ -68,27 +95,7 @@ public class FHIRPathEngine {
   // if the fhir path expressions are allowed to use constants beyond those defined in the specification
   // the application can implement them by providing a constant resolver
   public interface IEvaluationContext {
-    public class FunctionDetails {
-      private String description;
-      private int minParameters;
-      private int maxParameters;
-      public FunctionDetails(String description, int minParameters, int maxParameters) {
-        super();
-        this.description = description;
-        this.minParameters = minParameters;
-        this.maxParameters = maxParameters;
-      }
-      public String getDescription() {
-        return description;
-      }
-      public int getMinParameters() {
-        return minParameters;
-      }
-      public int getMaxParameters() {
-        return maxParameters;
-      }
-
-    }
+   
 
     /**
      * A constant reference - e.g. a reference to a name that must be resolved in context.
@@ -529,63 +536,6 @@ public class FHIRPathEngine {
       return "";
   }
 
-  private class ExecutionContext {
-    private Object appInfo;
-    private Base resource;
-    private Base context;
-    private Base thisItem;
-    private Map<String, Base> aliases;
-
-    public ExecutionContext(Object appInfo, Base resource, Base context, Map<String, Base> aliases, Base thisItem) {
-      this.appInfo = appInfo;
-      this.context = context;
-      this.resource = resource;
-      this.aliases = aliases;
-      this.thisItem = thisItem;
-    }
-    public Base getResource() {
-      return resource;
-    }
-    public Base getThisItem() {
-      return thisItem;
-    }
-    public void addAlias(String name, List<Base> focus) throws FHIRException {
-      if (aliases == null)
-        aliases = new HashMap<String, Base>();
-      else
-        aliases = new HashMap<String, Base>(aliases); // clone it, since it's going to change
-      if (focus.size() > 1)
-        throw new FHIRException("Attempt to alias a collection, not a singleton");
-      aliases.put(name, focus.size() == 0 ? null : focus.get(0));
-    }
-    public Base getAlias(String name) {
-      return aliases == null ? null : aliases.get(name);
-    }
-  }
-
-  private class ExecutionTypeContext {
-    private Object appInfo;
-    private String resource;
-    private String context;
-    private TypeDetails thisItem;
-
-
-    public ExecutionTypeContext(Object appInfo, String resource, String context, TypeDetails thisItem) {
-      super();
-      this.appInfo = appInfo;
-      this.resource = resource;
-      this.context = context;
-      this.thisItem = thisItem;
-
-    }
-    public String getResource() {
-      return resource;
-    }
-    public TypeDetails getThisItem() {
-      return thisItem;
-    }
-  }
-
   private ExpressionNode parseExpression(FHIRLexer lexer, boolean proximal) throws FHIRLexerException {
     ExpressionNode result = new ExpressionNode(lexer.nextId());
     SourceLocation c = lexer.getCurrentStartLocation();
@@ -1023,7 +973,7 @@ public class FHIRPathEngine {
     } else if (constant.startsWith("%")) {
       return resolveConstant(context, constant);
     } else if (constant.startsWith("@")) {
-      return processDateConstant(context.appInfo, constant.substring(1));
+      return processDateConstant(context.getAppInfo(), constant.substring(1));
     } else {
       return new StringType(constant);
     }
@@ -1056,11 +1006,11 @@ public class FHIRPathEngine {
     else if (s.equals("%ucum"))
       return new StringType("http://unitsofmeasure.org");
     else if (s.equals("%resource")) {
-      if (context.resource == null)
+      if (context.getResource() == null)
         throw new PathEngineException("Cannot use %resource in this context");
-      return context.resource;
+      return context.getResource();
     } else if (s.equals("%context")) {
-      return context.context;
+      return context.getContext();
     } else if (s.equals("%us-zip"))
       return new StringType("[0-9]{5}(-[0-9]{4}){0,1}");
     else if (s.startsWith("%\"vs-"))
@@ -1072,7 +1022,7 @@ public class FHIRPathEngine {
     else if (hostServices == null)
       throw new PathEngineException("Unknown fixed constant '"+s+"'");
     else
-      return hostServices.resolveConstant(context.appInfo, s.substring(1));
+      return hostServices.resolveConstant(context.getAppInfo(), s.substring(1));
   }
 
 
@@ -1751,11 +1701,11 @@ public class FHIRPathEngine {
     else if (s.equals("%ucum"))
       return new TypeDetails(CollectionStatus.SINGLETON, "string");
     else if (s.equals("%resource")) {
-      if (context.resource == null)
+      if (context.getResource() == null)
         throw new PathEngineException("%resource cannot be used in this context");
-      return new TypeDetails(CollectionStatus.SINGLETON, context.resource);
+      return new TypeDetails(CollectionStatus.SINGLETON, context.getResource());
     } else if (s.equals("%context")) {
-      return new TypeDetails(CollectionStatus.SINGLETON, context.context);
+      return new TypeDetails(CollectionStatus.SINGLETON, context.getContext());
     } else if (s.equals("%map-codes"))
       return new TypeDetails(CollectionStatus.SINGLETON, "string");
     else if (s.equals("%us-zip"))
@@ -1769,7 +1719,7 @@ public class FHIRPathEngine {
     else if (hostServices == null)
       throw new PathEngineException("Unknown fixed constant type for '"+s+"'");
     else
-      return hostServices.resolveConstantType(context.appInfo, s);
+      return hostServices.resolveConstantType(context.getAppInfo(), s);
   }
 
 	private List<Base> execute(ExecutionContext context, Base item, ExpressionNode exp, boolean atEntry) throws FHIRException {
@@ -1779,8 +1729,8 @@ public class FHIRPathEngine {
         result.add(item);
     } else
       getChildrenByName(item, exp.getName(), result);
-    if (result.size() == 0 && atEntry && context.appInfo != null) {
-      Base temp = hostServices.resolveConstant(context.appInfo, exp.getName());
+    if (result.size() == 0 && atEntry && context.getAppInfo() != null) {
+      Base temp = hostServices.resolveConstant(context.getAppInfo(), exp.getName());
       if (temp != null) {
         result.add(temp);
       }
@@ -1791,7 +1741,7 @@ public class FHIRPathEngine {
   private TypeDetails executeContextType(ExecutionTypeContext context, String name) throws PathEngineException, DefinitionException {
     if (hostServices == null)
       throw new PathEngineException("Unable to resolve context reference since no host services are provided");
-    return hostServices.resolveConstantType(context.appInfo, name);
+    return hostServices.resolveConstantType(context.getAppInfo(), name);
   }
 
   private TypeDetails executeType(String type, ExpressionNode exp, boolean atEntry) throws PathEngineException, DefinitionException {
@@ -1978,7 +1928,7 @@ public class FHIRPathEngine {
       checkParamTypes(exp.getFunction().toCode(), paramTypes, new TypeDetails(CollectionStatus.SINGLETON, "string"));
       return focus;
     case Custom : {
-      return hostServices.checkFunction(context.appInfo, exp.getName(), paramTypes);
+      return hostServices.checkFunction(context.getAppInfo(), exp.getName(), paramTypes);
     }
     default:
       break;
@@ -2095,7 +2045,7 @@ public class FHIRPathEngine {
       List<List<Base>> params = new ArrayList<List<Base>>();
       for (ExpressionNode p : exp.getParameters())
         params.add(execute(context, focus, p, true));
-      return hostServices.executeFunction(context.appInfo, exp.getName(), params);
+      return hostServices.executeFunction(context.getAppInfo(), exp.getName(), params);
     }
     default:
       throw new Error("not Implemented yet");
@@ -2156,11 +2106,11 @@ public class FHIRPathEngine {
 
 
   private ExecutionContext changeThis(ExecutionContext context, Base newThis) {
-    return new ExecutionContext(context.appInfo, context.resource, context.context, context.aliases, newThis);
+    return new ExecutionContext(context.getAppInfo(), context.getResource(), context.getContext(), context.getAliases(), newThis);
   }
 
   private ExecutionTypeContext changeThis(ExecutionTypeContext context, TypeDetails newThis) {
-    return new ExecutionTypeContext(context.appInfo, context.resource, context.context, newThis);
+    return new ExecutionTypeContext(context.getAppInfo(), context.getResource(), context.getContext(), newThis);
   }
 
 
@@ -2442,13 +2392,13 @@ public class FHIRPathEngine {
         }
         Base res = null;
         if (s.startsWith("#")) {
-          Property p = context.resource.getChildByName("contained");
+          Property p = context.getResource().getChildByName("contained");
           for (Base c : p.getValues()) {
           if (s.equals(c.getIdBase()))
               res = c;
         }
       } else if (hostServices != null) {
-         res = hostServices.resolveReference(context.appInfo, s);
+         res = hostServices.resolveReference(context.getAppInfo(), s);
       }
         if (res != null)
           result.add(res);
@@ -2674,7 +2624,7 @@ public class FHIRPathEngine {
     return makeBoolean(!convertToBoolean(focus));
   }
 
-  public class ElementDefinitionMatch {
+  private class ElementDefinitionMatch {
     private ElementDefinition definition;
     private String fixedType;
     public ElementDefinitionMatch(ElementDefinition definition, String fixedType) {

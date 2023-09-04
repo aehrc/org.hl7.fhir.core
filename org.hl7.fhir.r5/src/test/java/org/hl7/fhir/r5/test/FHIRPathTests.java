@@ -20,6 +20,7 @@ import org.hl7.fhir.r5.model.*;
 import org.hl7.fhir.r5.test.utils.TestingUtilities;
 import org.hl7.fhir.r5.utils.FHIRPathEngine;
 import org.hl7.fhir.r5.utils.FHIRPathEngine.IEvaluationContext;
+import org.hl7.fhir.r5.utils.FHIRPathUtilityClasses.FunctionDetails;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.xml.XMLUtil;
 import org.junit.jupiter.api.Assertions;
@@ -300,5 +301,14 @@ public class FHIRPathTests {
     assertEquals(2, result.size());
     assertEquals(DUMMY_CONSTANT_1, result.get(0).primitiveValue());
     assertEquals(DUMMY_CONSTANT_2, result.get(1).primitiveValue());
+  }
+
+  @Test
+  public void testEvaluate_Id() {
+    Patient input = new Patient();
+    input.setId(new IdType("http://base/Patient/123/_history/222"));
+    List<Base> results = fp.evaluate(input, "Patient.id");
+    assertEquals(1, results.size());
+    assertEquals("123", results.get(0).toString());
   }
 }

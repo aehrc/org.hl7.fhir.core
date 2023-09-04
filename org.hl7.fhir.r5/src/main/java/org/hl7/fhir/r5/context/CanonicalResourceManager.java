@@ -263,7 +263,7 @@ public class CanonicalResourceManager<T extends CanonicalResource> {
 
   public void see(CachedCanonicalResource<T> cr) {
     // -- 1. exit conditions -----------------------------------------------------------------------------
-    
+
     // ignore UTG NUCC erroneous code system
     if (cr.getPackageInfo() != null
       && cr.getPackageInfo().getId() != null
@@ -594,7 +594,7 @@ public class CanonicalResourceManager<T extends CanonicalResource> {
     if (list != null) {
       for (CanonicalResourceManager<T>.CachedCanonicalResource<T> t : list) {
         possibleMatches = true;
-        if (pvlist == null || pvlist.contains(t.getPackageInfo().getVID())) {
+        if (pvlist == null || t.getPackageInfo() == null || pvlist.contains(t.getPackageInfo().getVID())) {
           res.add(t.getResource());
         }
       }

@@ -85,6 +85,8 @@ public class Manager {
           return TEXT;
         case "hl7":
           return VBAR;
+        case "shc":
+          return SHC;
         case "fml":
           return FML;
         case "csv":

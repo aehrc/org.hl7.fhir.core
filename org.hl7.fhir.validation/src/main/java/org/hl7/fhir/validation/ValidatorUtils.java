@@ -4,7 +4,6 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
@@ -23,7 +22,6 @@ import org.hl7.fhir.convertors.loaders.loaderR5.R4ToR5Loader;
 import org.hl7.fhir.convertors.loaders.loaderR5.R5ToR5Loader;
 import org.hl7.fhir.convertors.loaders.loaderR5.R6ToR5Loader;
 import org.hl7.fhir.exceptions.FHIRException;
-import org.hl7.fhir.r5.context.IWorkerContext;
 import org.hl7.fhir.r5.context.SimpleWorkerContext;
 import org.hl7.fhir.r5.model.OperationOutcome;
 import org.hl7.fhir.r5.renderers.RendererFactory;
@@ -32,6 +30,7 @@ import org.hl7.fhir.r5.renderers.utils.RenderingContext.GenerationRules;
 import org.hl7.fhir.r5.utils.EOperationOutcome;
 import org.hl7.fhir.r5.utils.FHIRPathEngine;
 import org.hl7.fhir.r5.utils.OperationOutcomeUtilities;
+import org.hl7.fhir.utilities.ByteProvider;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.VersionUtilities;
 import org.hl7.fhir.utilities.i18n.I18nConstants;
@@ -69,10 +68,13 @@ public class ValidatorUtils {
     public void setCnt(Content cnt) {
       this.cnt = cnt;
     }
+    public boolean isKnownToBeMissing () { 
+      return date == 0;  // File::lastModified() returns 0 if the file is missing
+    }
   }
   
-  protected static void grabNatives(Map<String, byte[]> source, Map<String, byte[]> binaries, String prefix) {
-    for (Map.Entry<String, byte[]> e : source.entrySet()) {
+  protected static void grabNatives(Map<String, ByteProvider> source, Map<String, ByteProvider> binaries, String prefix) {
+    for (Map.Entry<String, ByteProvider> e : source.entrySet()) {
       if (e.getKey().endsWith(".zip"))
         binaries.put(prefix + "#" + e.getKey(), e.getValue());
     }
@@ -181,11 +183,10 @@ public class ValidatorUtils {
       if (file.isFile()) {
         addSourceFile(refs, file);
       } else {
-        for (int i = 0; i < file.listFiles().length; i++) {
-          File[] fileList = file.listFiles();
-          if (fileList[i].isFile()) {
-            if (!Utilities.isIgnorableFile(fileList[i])) {
-              addSourceFile(refs, fileList[i]);
+        for (File fileInDirectory : file.listFiles()) {
+          if (fileInDirectory.isFile()) {
+            if (!Utilities.isIgnorableFile(fileInDirectory)) {
+              addSourceFile(refs, fileInDirectory);
             }
           }
         }
@@ -196,9 +197,9 @@ public class ValidatorUtils {
 
   private static SourceFile addSourceFile(List<SourceFile> refs, File file) {
     SourceFile src = addSourceFile(refs, file.getPath());
-    Long l = file.lastModified();
+    long l = file.lastModified();  // returns 0 if the file is missing
     if (src.date != l) {
-      src.setProcess(true);
+      src.setProcess(l != 0);  // process only if not missing
     }
     src.date = l;
     return src;
