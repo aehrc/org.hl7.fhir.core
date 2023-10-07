@@ -29,7 +29,9 @@ import org.hl7.fhir.r5.model.StructureDefinition.TypeDerivationRule;
 import org.hl7.fhir.r5.utils.FHIRPathEngine;
 
 public class CsvParser extends ParserBase {
-  public static final String CSV_SD_URI = "http://hl7.org/fhir/StructureDefinition/CSV";
+  public static final String CSV_SD_URI = "http://hl7.org/fhir/tools/StructureDefinition/CSV";	// comma-separated
+  public static final String SCSV_SD_URI = "http://hl7.org/fhir/tools/StructureDefinition/SCSV";// semicolon-separated
+  public static final String TSV_SD_URI = "http://hl7.org/fhir/tools/StructureDefinition/TSV";	// tab-separated
 
   final private static String CSV = "CSV";
   final private static String RECORD = "CSV.record";
@@ -48,9 +50,24 @@ public class CsvParser extends ParserBase {
   public List<NamedElement> parse(final InputStream stream)
       throws IOException, FHIRFormatError, DefinitionException, FHIRException {
     final List<NamedElement> res = new ArrayList<>();
+    final char delimiter;
+
+    switch (logical.getUrl()) {
+    case CSV_SD_URI:
+      delimiter = ',';
+      break;
+    case SCSV_SD_URI:
+      delimiter = ';';
+      break;
+    case TSV_SD_URI:
+      delimiter = '\t';
+      break;
+    default:
+      delimiter = ',';
+    }
 
     final BufferedReader reader = new BufferedReader(new InputStreamReader(stream));
-    try (final CSVParser parser = CSVParser.parse(reader, CSVFormat.RFC4180.withFirstRecordAsHeader())) {
+    try (final CSVParser parser = CSVParser.parse(reader, CSVFormat.RFC4180.withFirstRecordAsHeader().withDelimiter(delimiter))) {
       final String[] headers;
 
       final ElementDefinition recordDefinition;
