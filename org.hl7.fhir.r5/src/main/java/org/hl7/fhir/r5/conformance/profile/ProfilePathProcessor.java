@@ -16,6 +16,7 @@ import org.hl7.fhir.r5.model.ElementDefinition.ElementDefinitionSlicingComponent
 import org.hl7.fhir.r5.model.ElementDefinition.SlicingRules;
 import org.hl7.fhir.r5.model.OperationOutcome.IssueType;
 import org.hl7.fhir.r5.model.StructureDefinition;
+import org.hl7.fhir.r5.model.StructureDefinition.StructureDefinitionKind;
 import org.hl7.fhir.r5.model.StructureDefinition.StructureDefinitionSnapshotComponent;
 import org.hl7.fhir.r5.utils.ToolingExtensions;
 import org.hl7.fhir.utilities.Utilities;
@@ -32,7 +33,7 @@ import lombok.With;
 
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ProfilePathProcessor {
-
+  
   @Getter
   protected final ProfileUtilities profileUtilities;
 
@@ -95,6 +96,7 @@ public class ProfilePathProcessor {
   @Getter
   @With
   final PathSlicingParams slicing;
+
 
   private ProfilePathProcessor(
     ProfileUtilities profileUtilities
@@ -164,11 +166,12 @@ public class ProfilePathProcessor {
     ElementDefinition res = null;
     List<TypeSlice> typeList = new ArrayList<>();
     // just repeat processing entries until we run out of our allowed scope (1st entry, the allowed scope is all the entries)
-    while (cursors.baseCursor <= getBaseLimit()) {
+    while (cursors.baseCursor <= getBaseLimit() && cursors.baseCursor < cursors.base.getElement().size()) {
       // get the current focus of the base, and decide what to do
       ElementDefinition currentBase = cursors.base.getElement().get(cursors.baseCursor);
       String currentBasePath = profileUtilities.fixedPathSource(getContextPathSource(), currentBase.getPath(), getRedirector());
       debugProcessPathsIteration(cursors, currentBasePath);
+      checkDiffAssignedAndCursor(cursors);
       List<ElementDefinition> diffMatches = profileUtilities.getDiffMatches(getDifferential(), currentBasePath, cursors.diffCursor, getDiffLimit(), getProfileName()); // get a list of matching elements in scope
 
       // in the simple case, source is not sliced.
@@ -191,6 +194,25 @@ public class ProfilePathProcessor {
         throw new Error(profileUtilities.getContext().formatMessage(I18nConstants.NULL_MIN));
     }
     return res;
+  }
+
+  private void checkDiffAssignedAndCursor(ProfilePathProcessorState cursors) {
+//    int i = 0;
+//    List<ElementDefinition> list = getDifferential().getElement();
+//    for (ElementDefinition ed : list) {
+//      boolean assigned = ed.hasUserData("derived.pointer");
+//      if (i < cursors.diffCursor) {
+//        if (!assigned) {
+//          throw new Error("what?");
+//        }
+//      } else if (i > cursors.diffCursor) {
+//        if (assigned) {
+//          throw new Error("what!?");
+//        }
+//      }
+//      i++;
+//    }
+    
   }
 
   private void debugProcessPathsIteration(ProfilePathProcessorState cursors, String currentBasePath) {
@@ -537,7 +559,7 @@ public class ProfilePathProcessor {
         }
       }
       if (!allowedTypes.isEmpty()) {
-        if (currentBasePath.contains("xtension.value")) {
+        if (currentBasePath.contains("xtension.value") && shortCut) {
           for (Iterator<ElementDefinition.TypeRefComponent> iter = elementDefinition.getType().iterator(); iter.hasNext(); ) {
             ElementDefinition.TypeRefComponent tr = iter.next();
             if (allowedTypes.contains(tr.getCode())) {
@@ -558,7 +580,9 @@ public class ProfilePathProcessor {
     ElementDefinition res;
     ElementDefinition template = null;
     if (diffMatches.get(0).hasType() && "Reference".equals(diffMatches.get(0).getType().get(0).getWorkingCode()) && !profileUtilities.isValidType(diffMatches.get(0).getType().get(0), currentBase)) {
-      throw new DefinitionException(profileUtilities.getContext().formatMessage(I18nConstants.VALIDATION_VAL_ILLEGAL_TYPE_CONSTRAINT, getUrl(), diffMatches.get(0).getPath(), diffMatches.get(0).getType().get(0), currentBase.typeSummary()));
+      if (!ProfileUtilities.isSuppressIgnorableExceptions()) {
+        throw new DefinitionException(profileUtilities.getContext().formatMessage(I18nConstants.VALIDATION_VAL_ILLEGAL_TYPE_CONSTRAINT, getUrl(), diffMatches.get(0).getPath(), diffMatches.get(0).getType().get(0), currentBase.typeSummary()));
+      }
     }
     String id = diffMatches.get(0).getId();
     String lid = profileUtilities.tail(id);
@@ -571,7 +595,8 @@ public class ProfilePathProcessor {
     } else if (diffMatches.get(0).hasType()
       && diffMatches.get(0).getType().size() == 1
       && diffMatches.get(0).getType().get(0).hasProfile()
-      && !"Reference".equals(diffMatches.get(0).getType().get(0).getWorkingCode())) {
+      && !"Reference".equals(diffMatches.get(0).getType().get(0).getWorkingCode())
+      && !(currentBase.getType().get(0).hasProfile() && currentBase.getType().get(0).getProfile().get(0).primitiveValue().equals(diffMatches.get(0).getType().get(0).getProfile().get(0).primitiveValue()))) {
       CanonicalType firstTypeProfile = diffMatches.get(0).getType().get(0).getProfile().get(0);
       StructureDefinition firstTypeStructureDefinition = profileUtilities.getContext().fetchResource(StructureDefinition.class, firstTypeProfile.getValue());
       if (firstTypeStructureDefinition == null && profileUtilities.getXver() != null && profileUtilities.getXver().matchingUrl(firstTypeProfile.getValue())) {
@@ -618,7 +643,12 @@ public class ProfilePathProcessor {
           if (firstTypeStructureDefinition.getSnapshot().getElement().isEmpty()) {
             throw new FHIRException(profileUtilities.getContext().formatMessage(I18nConstants.SNAPSHOT_IS_EMPTY, firstTypeStructureDefinition.getVersionedUrl(), "Source for first element"));
           } else {
-            src = firstTypeStructureDefinition.getSnapshot().getElement().get(0);
+            src = firstTypeStructureDefinition.getSnapshot().getElement().get(0).copy();
+            if (!src.getPath().contains(".") && firstTypeStructureDefinition.getKind() == StructureDefinitionKind.RESOURCE) {
+              // we can't migrate the constraints in this case, because the sense of %resource changes when the root resource
+              // is treated as an element. The validator will enforce the constraint
+              src.getConstraint().clear(); // 
+            }
           }
         }
         template = src.copy().setPath(currentBase.getPath());
@@ -839,6 +869,7 @@ public class ProfilePathProcessor {
     outcome.setPath(profileUtilities.fixedPathDest(getContextPathTarget(), outcome.getPath(), getRedirector(), getContextPathSource()));
     profileUtilities.updateFromBase(outcome, currentBase, getSourceStructureDefinition().getUrl());
     profileUtilities.updateConstraintSources(outcome, getSourceStructureDefinition().getUrl());
+    profileUtilities.checkExtensions(outcome);
     profileUtilities.updateFromObligationProfiles(outcome);
     profileUtilities.updateURLs(url, webUrl, outcome);
     profileUtilities.markDerived(outcome);
@@ -1059,7 +1090,7 @@ public class ProfilePathProcessor {
       }
 //            throw new Error("Not done yet");
 //          } else if (currentBase.getType().get(0).getCode().equals("BackboneElement") && diffMatches.size() > 0 && diffMatches.get(0).hasSliceName()) {
-    } else if (currentBase.getType().get(0).getCode().equals("BackboneElement")) {
+    } else if (!currentBase.getType().isEmpty() && currentBase.getType().get(0).getCode().equals("BackboneElement")) {
       // We need to copy children of the backbone element before we start messing around with slices
       int newBaseLimit = profileUtilities.findEndOfElement(cursors.base, cursors.baseCursor);
       for (int i = cursors.baseCursor + 1; i <= newBaseLimit; i++) {
@@ -1157,7 +1188,7 @@ public class ProfilePathProcessor {
                     throw new DefinitionException(profileUtilities.getContext().formatMessage(I18nConstants._HAS_CHILDREN__AND_MULTIPLE_TYPES__IN_PROFILE_, diffMatches.get(0).getPath(), getDifferential().getElement().get(cursors.diffCursor).getPath(), profileUtilities.typeCode(outcome.getType()), getProfileName()));
                 }
               ElementDefinition.TypeRefComponent t = outcome.getType().get(0);
-              if (t.getCode().equals("BackboneElement")) {
+              if (Utilities.existsInList(t.getCode(), "Base", "Element", "BackboneElement")) {
                 int baseStart = cursors.base.getElement().indexOf(currentBase) + 1;
                 int baseMax = baseStart + 1;
                 while (baseMax < cursors.base.getElement().size() && cursors.base.getElement().get(baseMax).getPath().startsWith(currentBase.getPath() + "."))

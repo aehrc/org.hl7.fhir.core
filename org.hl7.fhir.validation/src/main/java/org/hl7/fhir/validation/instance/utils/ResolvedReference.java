@@ -9,6 +9,7 @@ public class ResolvedReference {
     private Element focus;
     private boolean external;
     private NodeStack stack;
+    private NodeStack via;
 
     public ResolvedReference setResource(Element resource) {
         this.resource = resource;
@@ -50,11 +51,19 @@ public class ResolvedReference {
         return focus;
     }
 
-    public ValidatorHostContext hostContext(ValidatorHostContext hostContext, StructureDefinition profile) {
+    public NodeStack getVia() {
+      return via;
+    }
+
+    public void setVia(NodeStack via) {
+      this.via = via;
+    }
+
+    public ValidationContext valContext(ValidationContext valContext, StructureDefinition profile) {
         if (external) {
-            return hostContext.forRemoteReference(profile, resource);
+            return valContext.forRemoteReference(profile, resource);
         } else {
-            return hostContext.forLocalReference(profile, resource);
+            return valContext.forLocalReference(profile, resource);
         }
     }
 }

@@ -117,12 +117,12 @@ import org.hl7.fhir.utilities.ToolingClientLogger;
 import org.hl7.fhir.utilities.TranslationServices;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.VersionUtilities;
+import org.hl7.fhir.utilities.filesystem.ManagedFileAccess;
 import org.hl7.fhir.utilities.i18n.I18nBase;
 import org.hl7.fhir.utilities.i18n.I18nConstants;
 import org.hl7.fhir.utilities.validation.ValidationMessage.IssueSeverity;
 import org.hl7.fhir.utilities.validation.ValidationMessage.IssueType;
 import org.hl7.fhir.utilities.validation.ValidationOptions;
-import org.hl7.fhir.utilities.validation.ValidationOptions.ValueSetMode;
 
 import com.google.gson.JsonObject;
 
@@ -805,11 +805,13 @@ public abstract class BaseWorkerContext extends I18nBase implements IWorkerConte
     tlog("$expand on " + txCache.summary(vs));
     try {
       ValueSet result = txClient.expandValueset(vs, p, params);
-      if (!result.hasUrl()) {
-        result.setUrl(vs.getUrl());
-      }
-      if (!result.hasUrl()) {
-        throw new Error(formatMessage(I18nConstants.NO_URL_IN_EXPAND_VALUE_SET_2));
+      if (result != null) {
+        if (!result.hasUrl()) {
+          result.setUrl(vs.getUrl());
+        }
+        if (!result.hasUrl()) {
+          throw new Error(formatMessage(I18nConstants.NO_URL_IN_EXPAND_VALUE_SET_2));
+        }
       }
       res = new ValueSetExpansionOutcome(result).setTxLink(txLog.getLastId());
     } catch (Exception e) {
@@ -893,11 +895,11 @@ public abstract class BaseWorkerContext extends I18nBase implements IWorkerConte
               TerminologyServiceErrorClass.BLOCKED_BY_OPTIONS));
         } else if (unsupportedCodeSystems.contains(codeKey)) {
           t.setResult(new ValidationResult(IssueSeverity.ERROR,
-              formatMessage(I18nConstants.TERMINOLOGY_TX_SYSTEM_NOTKNOWN, t.getCoding().getSystem()),
+              formatMessage(I18nConstants.UNKNOWN_CODESYSTEM, t.getCoding().getSystem()),
               TerminologyServiceErrorClass.CODESYSTEM_UNSUPPORTED));
         } else if (noTerminologyServer) {
           t.setResult(new ValidationResult(IssueSeverity.ERROR,
-              formatMessage(I18nConstants.ERROR_VALIDATING_CODE_RUNNING_WITHOUT_TERMINOLOGY_SERVICES),
+              formatMessage(I18nConstants.ERROR_VALIDATING_CODE_RUNNING_WITHOUT_TERMINOLOGY_SERVICES, t.getCoding().getCode(), t.getCoding().getSystem()),
               TerminologyServiceErrorClass.NOSERVICE));
         }
       }
@@ -1010,14 +1012,14 @@ public abstract class BaseWorkerContext extends I18nBase implements IWorkerConte
     }
     if (unsupportedCodeSystems.contains(codeKey)) {
       return new ValidationResult(IssueSeverity.ERROR,
-          formatMessage(I18nConstants.TERMINOLOGY_TX_SYSTEM_NOTKNOWN, code.getSystem()),
+          formatMessage(I18nConstants.UNKNOWN_CODESYSTEM, code.getSystem()),
           TerminologyServiceErrorClass.CODESYSTEM_UNSUPPORTED);
     }
 
     // if that failed, we try to validate on the server
     if (noTerminologyServer) {
       return new ValidationResult(IssueSeverity.ERROR,
-          formatMessage(I18nConstants.ERROR_VALIDATING_CODE_RUNNING_WITHOUT_TERMINOLOGY_SERVICES),
+          formatMessage(I18nConstants.ERROR_VALIDATING_CODE_RUNNING_WITHOUT_TERMINOLOGY_SERVICES, code.getCode(), code.getSystem()),
           TerminologyServiceErrorClass.NOSERVICE);
     }
     String csumm = txCache != null ? txCache.summary(code) : null;
@@ -1051,8 +1053,11 @@ public abstract class BaseWorkerContext extends I18nBase implements IWorkerConte
     if (options.hasLanguages()) {
       pIn.addParameter("displayLanguage", options.getLanguages().toString());
     }
-    if (options.getValueSetMode() != ValueSetMode.ALL_CHECKS) {
-      pIn.addParameter("valueSetMode", options.getValueSetMode().toString());
+    if (options.isMembershipOnly()) {
+      pIn.addParameter("valueset-membership-only", true);
+    }
+    if (options.isDisplayWarningMode()) {
+      pIn.addParameter("lenient-display-validation", true);
     }
     if (options.isVersionFlexible()) {
       pIn.addParameter("default-to-latest-version", true);
@@ -1255,7 +1260,7 @@ public abstract class BaseWorkerContext extends I18nBase implements IWorkerConte
   // --------------------------------------------------------------------------------------------------------------------------------------------------------
 
   public void initTS(String cachePath) throws Exception {
-    if (!new File(cachePath).exists()) {
+    if (!ManagedFileAccess.file(cachePath).exists()) {
       Utilities.createDirectory(cachePath);
     }
     txCache = new TerminologyCache(lock, cachePath);
@@ -2145,7 +2150,7 @@ public abstract class BaseWorkerContext extends I18nBase implements IWorkerConte
       try {
         if (sd.getSnapshot().isEmpty()) {
           generateSnapshot(sd);
-//          new XmlParser().setOutputStyle(OutputStyle.PRETTY).compose(new FileOutputStream(Utilities.path("[tmp]", "snapshot", tail(sd.getUrl())+".xml")), sd);
+//          new XmlParser().setOutputStyle(OutputStyle.PRETTY).compose(ManagedFileAccess.outStream(Utilities.path("[tmp]", "snapshot", tail(sd.getUrl())+".xml")), sd);
         }
       } catch (Exception e) {
 //        System.out.println("Unable to generate snapshot for "+tail(sd.getUrl()) +" from "+tail(sd.getBaseDefinition())+" because "+e.getMessage());

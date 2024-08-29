@@ -4,11 +4,6 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 import org.apache.commons.io.IOUtils;
 import org.hl7.fhir.convertors.factory.VersionConvertorFactory_10_50;
@@ -18,22 +13,16 @@ import org.hl7.fhir.convertors.factory.VersionConvertorFactory_40_50;
 import org.hl7.fhir.exceptions.DefinitionException;
 import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.exceptions.FHIRFormatError;
-import org.hl7.fhir.r5.context.IWorkerContext.ValidationResult;
 import org.hl7.fhir.r5.formats.IParser.OutputStyle;
 import org.hl7.fhir.r5.formats.JsonParser;
 import org.hl7.fhir.r5.formats.XmlParser;
-import org.hl7.fhir.r5.model.CanonicalType;
 import org.hl7.fhir.r5.model.CodeType;
-import org.hl7.fhir.r5.model.CodeableConcept;
-import org.hl7.fhir.r5.model.Coding;
 import org.hl7.fhir.r5.model.Constants;
 import org.hl7.fhir.r5.model.OperationOutcome;
 import org.hl7.fhir.r5.model.OperationOutcome.IssueSeverity;
 import org.hl7.fhir.r5.model.OperationOutcome.IssueType;
 import org.hl7.fhir.r5.model.OperationOutcome.OperationOutcomeIssueComponent;
-import org.hl7.fhir.r5.model.Parameters.ParametersParameterComponent;
 import org.hl7.fhir.r5.model.Resource;
-import org.hl7.fhir.r5.model.UriType;
 import org.hl7.fhir.r5.model.ValueSet;
 import org.hl7.fhir.r5.model.ValueSet.ValueSetExpansionParameterComponent;
 import org.hl7.fhir.r5.terminologies.expansion.ValueSetExpansionOutcome;
@@ -42,9 +31,12 @@ import org.hl7.fhir.r5.test.utils.TestingUtilities;
 import org.hl7.fhir.utilities.FhirPublication;
 import org.hl7.fhir.utilities.TextFile;
 import org.hl7.fhir.utilities.Utilities;
+import org.hl7.fhir.utilities.filesystem.ManagedFileAccess;
 import org.hl7.fhir.utilities.json.model.JsonObject;
-import org.hl7.fhir.utilities.validation.ValidationOptions;
 import org.hl7.fhir.validation.ValidationEngine;
+import org.hl7.fhir.validation.special.TxServiceTestHelper;
+import org.hl7.fhir.validation.special.TxTestSetup;
+import org.hl7.fhir.validation.special.TxTestData;
 import org.hl7.fhir.validation.special.TxTesterScrubbers;
 import org.hl7.fhir.validation.special.TxTesterSorters;
 import org.hl7.fhir.validation.tests.utilities.TestUtilities;
@@ -56,60 +48,30 @@ import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
 import com.google.common.base.Charsets;
-import com.google.gson.JsonSyntaxException;
 
+import static org.junit.Assert.assertNull;
 
 
 @RunWith(Parameterized.class)
 public class TerminologyServiceTests {
 
-  public static class JsonObjectPair {
-    public JsonObjectPair(JsonObject suite, JsonObject test) {
-      this.suite = suite;
-      this.test = test;
-    }
-    private JsonObject suite;
-    private JsonObject test;
-  }
+
+private static TxTestData testData;
 
   @Parameters(name = "{index}: id {0}")
   public static Iterable<Object[]> data() throws IOException {
-
-    String contents = TestingUtilities.loadTestResource("tx", "test-cases.json");
-    String externalSource = TestingUtilities.loadTestResource("tx", "messages-tx.fhir.org.json");
-    externals = org.hl7.fhir.utilities.json.parser.JsonParser.parseObject(externalSource);
-
-    Map<String, JsonObjectPair> examples = new HashMap<String, JsonObjectPair>();
-    manifest = org.hl7.fhir.utilities.json.parser.JsonParser.parseObject(contents);
-    for (org.hl7.fhir.utilities.json.model.JsonObject suite : manifest.getJsonObjects("suites")) {
-      String sn = suite.asString("name");
-      for (org.hl7.fhir.utilities.json.model.JsonObject test : suite.getJsonObjects("tests")) {
-        String tn = test.asString("name");
-        examples.put(sn+"."+tn, new JsonObjectPair(suite, test));
-      }
-    }
-
-    List<String> names = new ArrayList<String>(examples.size());
-    names.addAll(examples.keySet());
-    Collections.sort(names);
-
-    List<Object[]> objects = new ArrayList<Object[]>(examples.size());
-    for (String id : names) {
-      objects.add(new Object[]{id, examples.get(id)});
-    }
-    return objects;
+    testData = TxTestData.loadTestDataFromDefaultClassPath();
+    return testData.getTestData();
   }
 
-  private static org.hl7.fhir.utilities.json.model.JsonObject manifest;
-  private static org.hl7.fhir.utilities.json.model.JsonObject externals;
-  private JsonObjectPair setup;
-  private String version;
-  private String name;
+  private final TxTestSetup setup;
+  private final String version;
+  private final String name;
 
 
   private static ValidationEngine baseEngine;
 
-  public TerminologyServiceTests(String name, JsonObjectPair setup) {
+  public TerminologyServiceTests(String name, TxTestSetup setup) {
     this.name = name;
     this.setup = setup;
     version = "5.0.0";
@@ -122,35 +84,44 @@ public class TerminologyServiceTests {
       baseEngine = TestUtilities.getValidationEngineNoTxServer("hl7.fhir.r5.core#5.0.0", FhirPublication.R5, "5.0.0");
     }
     ValidationEngine engine = new ValidationEngine(this.baseEngine);
-    for (String s : setup.suite.forceArray("setup").asStrings()) {
+    for (String s : setup.getSuite().forceArray("setup").asStrings()) {
       // System.out.println(s);
       Resource res = loadResource(s);
       engine.seeResource(res);
     }
-    Resource req = loadResource(setup.test.asString("request"));
-    String fn = setup.test.asString("response");
+    if (setup.getSuite().asBoolean("disabled") || setup.getTest().asBoolean("disabled")) {
+      return;
+    }
+    Resource req = loadResource(setup.getTest().asString("request"));
+    String fn = setup.getTest().has("response:tx.fhir.org") ? setup.getTest().asString("response:tx.fhir.org") : setup.getTest().asString("response");
     String resp = TestingUtilities.loadTestResource("tx", fn);
     String fp = Utilities.path("[tmp]", "tx", fn);
-    JsonObject ext = externals == null ? null : externals.getJsonObject(fn);
-    File fo = new File(fp);
+    JsonObject ext = testData.getExternals() == null ? null : testData.getExternals().getJsonObject(fn);
+    File fo = ManagedFileAccess.file(fp);
     if (fo.exists()) {
       fo.delete();
     }
-    if (setup.test.has("profile")) {
-      engine.getContext().setExpansionProfile((org.hl7.fhir.r5.model.Parameters) loadResource(setup.test.asString("profile")));
+    if (setup.getTest().has("profile")) {
+      engine.getContext().setExpansionParameters((org.hl7.fhir.r5.model.Parameters) loadResource(setup.getTest().asString("profile")));
     } else {
-      engine.getContext().setExpansionProfile((org.hl7.fhir.r5.model.Parameters) loadResource("parameters-default.json"));
+      engine.getContext().setExpansionParameters((org.hl7.fhir.r5.model.Parameters) loadResource("parameters-default.json"));
     }
-    if (setup.test.asString("operation").equals("expand")) {
-      expand(engine, req, resp, setup.test.asString("Accept-Language"), fp, ext);
-    } else if (setup.test.asString("operation").equals("validate-code")) {
-      validate(engine, setup.test.asString("name"), req, resp, setup.test.asString("Accept-Language"), fp, ext);      
+    if (setup.getTest().asString("operation").equals("expand")) {
+      expand(setup.getTest().str("name"), engine, req, resp, setup.getTest().asString("Content-Language"), fp, ext);
+    } else if (setup.getTest().asString("operation").equals("validate-code")) {
+      String diff = TxServiceTestHelper.getDiffForValidation(setup.getTest().str("name"), engine.getContext(), setup.getTest().asString("name"), req, resp, setup.getTest().asString("Content-Language"), fp, ext, false);
+      assertNull(diff, diff);
+    } else if (setup.getTest().asString("operation").equals("cs-validate-code")) {
+      String diff = TxServiceTestHelper.getDiffForValidation(setup.getTest().str("name"), engine.getContext(), setup.getTest().asString("name"), req, resp, setup.getTest().asString("Content-Language"), fp, ext, true);
+      assertNull(diff, diff);
+    } else if (Utilities.existsInList(setup.getTest().asString("operation"), "lookup", "translate")) {
+      Assertions.assertTrue(true); // we don't test these for the internal server
     } else {
-      Assertions.fail("Unknown Operation "+setup.test.asString("operation"));
+      Assertions.fail("Unknown Operation "+ setup.getTest().asString("operation"));
     }
   }
 
-  private void expand(ValidationEngine engine, Resource req, String resp, String lang, String fp, JsonObject ext) throws IOException {
+  private void expand(String id, ValidationEngine engine, Resource req, String resp, String lang, String fp, JsonObject ext) throws IOException {
     org.hl7.fhir.r5.model.Parameters p = ( org.hl7.fhir.r5.model.Parameters) req;
     ValueSet vs = engine.getContext().fetchResource(ValueSet.class, p.getParameterValue("url").primitiveValue());
     boolean hierarchical = p.hasParameter("excludeNested") ? p.getParameterBool("excludeNested") == false : true;
@@ -158,7 +129,7 @@ public class TerminologyServiceTests {
     if (lang != null && !p.hasParameter("displayLanguage")) {
       p.addParameter("displayLanguage", new CodeType(lang));
     }
-    ValueSetExpansionOutcome vse = engine.getContext().expandVS(vs, false, hierarchical, false, p);
+    ValueSetExpansionOutcome vse = engine.getContext().expandVS(vs, false, hierarchical, false, p, true);
     if (resp.contains("\"ValueSet\"")) {
       if (vse.getValueset() == null) {
         Assertions.fail(vse.getError());
@@ -169,7 +140,7 @@ public class TerminologyServiceTests {
         TxTesterSorters.sortValueSet(vse.getValueset());
         TxTesterScrubbers.scrubVS(vse.getValueset(), false);
         String vsj = new JsonParser().setOutputStyle(OutputStyle.PRETTY).composeString(vse.getValueset());
-        String diff = CompareUtilities.checkJsonSrcIsSame(resp, vsj, ext);
+        String diff = CompareUtilities.checkJsonSrcIsSame(id, resp, vsj, ext);
         if (diff != null) {
           Utilities.createDirectory(Utilities.getDirectoryForFile(fp));
           TextFile.stringToFile(vsj, fp);        
@@ -202,6 +173,9 @@ public class TerminologyServiceTests {
       case TOO_COSTLY:
         e.setCode(IssueType.TOOCOSTLY);
         break;
+      case PROCESSING:
+        e.setCode(IssueType.PROCESSING);
+        break;
       case UNKNOWN:
         e.setCode(IssueType.UNKNOWN);
         break;
@@ -215,7 +189,7 @@ public class TerminologyServiceTests {
       TxTesterScrubbers.scrubOO(oo, false);
 
       String ooj = new JsonParser().setOutputStyle(OutputStyle.PRETTY).composeString(oo);
-      String diff = CompareUtilities.checkJsonSrcIsSame(resp, ooj, ext);
+      String diff = CompareUtilities.checkJsonSrcIsSame(id, resp, ooj, ext);
       if (diff != null) {
         Utilities.createDirectory(Utilities.getDirectoryForFile(fp));
         TextFile.stringToFile(ooj, fp);        
@@ -233,112 +207,7 @@ public class TerminologyServiceTests {
     }
   }
 
-  private void validate(ValidationEngine engine, String name, Resource req, String resp, String lang, String fp, JsonObject ext) throws JsonSyntaxException, FileNotFoundException, IOException {
-    org.hl7.fhir.r5.model.Parameters p = (org.hl7.fhir.r5.model.Parameters) req;
-    ValueSet vs = null;
-    if (p.hasParameter("valueSetVersion")) {
-      vs = engine.getContext().fetchResource(ValueSet.class, p.getParameterValue("url").primitiveValue(), p.getParameterValue("valueSetVersion").primitiveValue());      
-    } else {
-      vs = engine.getContext().fetchResource(ValueSet.class, p.getParameterValue("url").primitiveValue());
-    }
-    ValidationOptions options = new ValidationOptions();
-    if (p.hasParameter("displayLanguage")) {
-      options = options.withLanguage(p.getParameterString("displayLanguage"));
-    } else if (lang != null ) {
-      options = options.withLanguage(lang);
-    }
-    if (p.hasParameter("valueSetMode") && "CHECK_MEMBERSHIP_ONLY".equals(p.getParameterString("valueSetMode"))) {
-      options = options.withCheckValueSetOnly();
-    }
-    if (p.hasParameter("mode") && "lenient-display-validation".equals(p.getParameterString("mode"))) {
-      options = options.setDisplayWarningMode(true);
-    }
-    engine.getContext().getExpansionParameters().clearParameters("includeAlternateCodes");
-    for (ParametersParameterComponent pp : p.getParameter()) {
-      if ("includeAlternateCodes".equals(pp.getName())) {
-        engine.getContext().getExpansionParameters().addParameter(pp.copy());
-      }
-    }
-    ValidationResult vm;
-    if (p.hasParameter("code")) {
-      vm = engine.getContext().validateCode(options.withGuessSystem(), p.getParameterString("system"), p.getParameterString("systemVersion"), p.getParameterString("code"), p.getParameterString("display"), vs);
-    } else if (p.hasParameter("coding")) {
-      Coding coding = (Coding) p.getParameterValue("coding");
-      vm = engine.getContext().validateCode(options, coding, vs);
-    } else if (p.hasParameter("codeableConcept")) {
-      CodeableConcept cc = (CodeableConcept) p.getParameterValue("codeableConcept");
-      vm = engine.getContext().validateCode(options, cc, vs);
-    } else {
-      throw new Error("validate not done yet for this steup");
-    }
-    if (vm.getSeverity() == org.hl7.fhir.utilities.validation.ValidationMessage.IssueSeverity.FATAL) {
-      OperationOutcome oo = new OperationOutcome();
-      oo.getIssue().addAll(vm.getIssues());
-      TxTesterSorters.sortOperationOutcome(oo);
-      TxTesterScrubbers.scrubOO(oo, false);
-      
-      String pj = new JsonParser().setOutputStyle(OutputStyle.PRETTY).composeString(oo);
-      String diff = CompareUtilities.checkJsonSrcIsSame(resp, pj, ext);
-      if (diff != null) {
-        Utilities.createDirectory(Utilities.getDirectoryForFile(fp));
-        TextFile.stringToFile(pj, fp); 
-        System.out.println("Test "+name+"failed: "+diff);
-      }
-      Assertions.assertTrue(diff == null, diff);
-    } else {
-      org.hl7.fhir.r5.model.Parameters res = new org.hl7.fhir.r5.model.Parameters();
-      if (vm.getSystem() != null) {
-        res.addParameter("system", new UriType(vm.getSystem()));
-      }
-      if (vm.getCode() != null) {
-        res.addParameter("code", new CodeType(vm.getCode()));
-      }
-      if (vm.getSeverity() == org.hl7.fhir.utilities.validation.ValidationMessage.IssueSeverity.ERROR) {
-        res.addParameter("result", false);
-      } else {
-        res.addParameter("result", true);
-      }
-      if (vm.getMessage() != null) {
-        res.addParameter("message", vm.getMessage());
-      }
-      if (vm.getVersion() != null) {
-        res.addParameter("version", vm.getVersion());
-      }
-      if (vm.getDisplay() != null) {
-        res.addParameter("display", vm.getDisplay());
-      }
-      if (vm.getCodeableConcept() != null) {
-        res.addParameter("codeableConcept", vm.getCodeableConcept());
-      }
-      if (vm.isInactive()) {
-        res.addParameter("inactive", true);
-      }
-      if (vm.getStatus() != null) {
-        res.addParameter("status", vm.getStatus());
-      }
-      if (vm.getUnknownSystems() != null) {
-        for (String s : vm.getUnknownSystems()) {
-          res.addParameter("x-caused-by-unknown-system", new CanonicalType(s));
-        }
-      }
-      if (vm.getIssues().size() > 0) {
-        OperationOutcome oo = new OperationOutcome();
-        oo.getIssue().addAll(vm.getIssues());
-        res.addParameter().setName("issues").setResource(oo);
-      }
-      TxTesterSorters.sortParameters(res);
-      TxTesterScrubbers.scrubParams(res);
 
-      String pj = new JsonParser().setOutputStyle(OutputStyle.PRETTY).composeString(res);
-      String diff = CompareUtilities.checkJsonSrcIsSame(resp, pj, ext);
-      if (diff != null) {
-        Utilities.createDirectory(Utilities.getDirectoryForFile(fp));
-        TextFile.stringToFile(pj, fp); 
-        System.out.println("Test "+name+"failed: "+diff);
-      }
-      Assertions.assertTrue(diff == null, diff);
-    }
-  }
 
   public Resource loadResource(String filename) throws IOException, FHIRFormatError, FileNotFoundException, FHIRException, DefinitionException {
     String contents = TestingUtilities.loadTestResource("tx", filename);

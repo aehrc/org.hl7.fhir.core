@@ -18,13 +18,17 @@ import org.hl7.fhir.r4.model.Resource;
 import org.hl7.fhir.r4.utils.ResourceUtilities;
 import org.hl7.fhir.r4.utils.client.EFhirClientException;
 import org.hl7.fhir.r4.utils.client.ResourceFormat;
+import org.hl7.fhir.utilities.MimeType;
+import org.hl7.fhir.utilities.TextFile;
 import org.hl7.fhir.utilities.settings.FhirSettings;
 
 import okhttp3.Authenticator;
 import okhttp3.Credentials;
 import okhttp3.Headers;
+import okhttp3.Headers.Builder;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import okhttp3.RequestBody;
 import okhttp3.Response;
 
 public class FhirRequestBuilder {
@@ -84,7 +88,6 @@ public class FhirRequestBuilder {
   /**
    * Adds necessary headers for all REST requests.
    * <li>User-Agent : hapi-fhir-tooling-client</li>
-   * <li>Accept-Charset : {@link FhirRequestBuilder#DEFAULT_CHARSET}</li>
    *
    * @param request {@link Request.Builder} to add default headers to.
    */
@@ -92,7 +95,6 @@ public class FhirRequestBuilder {
     if (headers == null || !headers.names().contains("User-Agent")) {
       request.addHeader("User-Agent", "hapi-fhir-tooling-client");
     }
-    request.addHeader("Accept-Charset", DEFAULT_CHARSET);
   }
 
   /**
@@ -247,7 +249,7 @@ public class FhirRequestBuilder {
   public Bundle executeAsBatch() throws IOException {
     formatHeaders(httpRequest, resourceFormat, null);
     Response response = getHttpClient().newCall(httpRequest.build()).execute();
-    return unmarshalFeed(response, resourceFormat);
+     return unmarshalFeed(response, resourceFormat);
   }
 
   /**
@@ -257,10 +259,11 @@ public class FhirRequestBuilder {
   protected <T extends Resource> T unmarshalReference(Response response, String format) {
     T resource = null;
     OperationOutcome error = null;
-
+    byte[] body = null;
+    
     if (response.body() != null) {
       try {
-        byte[] body = response.body().bytes();
+        body = response.body().bytes();
         resource = (T) getParser(format).parse(body);
         if (resource instanceof OperationOutcome && hasError((OperationOutcome) resource)) {
           error = (OperationOutcome) resource;
@@ -273,11 +276,21 @@ public class FhirRequestBuilder {
     }
 
     if (error != null) {
-      throw new EFhirClientException("Error from server: " + ResourceUtilities.getErrorDescription(error), error);
+      String s = ResourceUtilities.getErrorDescription(error);
+      String reqid = response.header("x-request-id");
+      if (reqid == null) {
+        reqid = response.header("X-Request-Id");        
+      }
+      if (reqid != null) {
+        s = s + " [x-request-id: "+reqid+"]";
+      }
+      System.out.println("Error from "+source+": " + s);
+      throw new EFhirClientException("Error from "+source+": " + ResourceUtilities.getErrorDescription(error), error);
     }
 
     return resource;
   }
+
 
   /**
    * Unmarshalls Bundle from response stream.
@@ -302,6 +315,12 @@ public class FhirRequestBuilder {
           }
         }
       }
+      if (!response.isSuccessful() && feed == null && error == null) {
+        String text = TextFile.bytesToString(body);
+        throw new EFhirClientException("Error from "+source+": " + text);
+      }
+    } catch (EFhirClientException e) {
+      throw e;
     } catch (IOException ioe) {
       throw new EFhirClientException("Error reading Http Response from "+source+":"+ioe.getMessage(), ioe);
     } catch (Exception e) {
@@ -326,9 +345,11 @@ public class FhirRequestBuilder {
     if (StringUtils.isBlank(format)) {
       format = ResourceFormat.RESOURCE_XML.getHeader();
     }
-    if (format.equalsIgnoreCase("json") || format.equalsIgnoreCase(ResourceFormat.RESOURCE_JSON.getHeader())) {
+    MimeType mt = new MimeType(format);
+    
+    if (mt.getBase().equalsIgnoreCase(ResourceFormat.RESOURCE_JSON.getHeader())) {
       return new JsonParser();
-    } else if (format.equalsIgnoreCase("xml") || format.equalsIgnoreCase(ResourceFormat.RESOURCE_XML.getHeader())) {
+    } else if (mt.getBase().equalsIgnoreCase(ResourceFormat.RESOURCE_XML.getHeader())) {
       return new XmlParser();
     } else {
       throw new EFhirClientException("Invalid format: " + format);

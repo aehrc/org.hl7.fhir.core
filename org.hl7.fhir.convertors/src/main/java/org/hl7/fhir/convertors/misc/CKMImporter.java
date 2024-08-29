@@ -40,10 +40,11 @@ import javax.xml.parsers.DocumentBuilderFactory;
 
 
 import org.hl7.fhir.convertors.misc.adl.ADLImporter;
-import org.hl7.fhir.utilities.SimpleHTTPClient;
-import org.hl7.fhir.utilities.SimpleHTTPClient.HTTPResult;
 import org.hl7.fhir.utilities.TextFile;
 import org.hl7.fhir.utilities.Utilities;
+import org.hl7.fhir.utilities.filesystem.ManagedFileAccess;
+import org.hl7.fhir.utilities.http.HTTPResult;
+import org.hl7.fhir.utilities.http.ManagedWebAccess;
 import org.hl7.fhir.utilities.xml.XMLUtil;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -115,17 +116,17 @@ public class CKMImporter {
     String src = Utilities.path(Utilities.path("[tmp]"), id + ".xml");
     String dst = Utilities.path(dest, id + ".xml");
 
-    if (!new File(src).exists())
+    if (!ManagedFileAccess.file(src).exists())
       downloadArchetype(id);
-    if (cfg != null && new File(cfg).exists())
+    if (cfg != null && ManagedFileAccess.file(cfg).exists())
       ADLImporter.main(new String[]{"-source", src, "-dest", dst, "-config", config, "-info", cfg});
     else
       ADLImporter.main(new String[]{"-source", src, "-dest", dst, "-config", config});
   }
 
   private Document loadXml(String address) throws Exception {
-    SimpleHTTPClient http = new SimpleHTTPClient();
-    HTTPResult res = http.get(address, "application/xml");
+
+    HTTPResult res = ManagedWebAccess.get(address, "application/xml");
     res.checkThrowException();
     InputStream xml = new ByteArrayInputStream(res.getContent());
 

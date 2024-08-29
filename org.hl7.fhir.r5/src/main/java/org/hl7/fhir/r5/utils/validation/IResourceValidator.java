@@ -31,9 +31,11 @@ package org.hl7.fhir.r5.utils.validation;
 
 
 import org.hl7.fhir.exceptions.FHIRException;
+import org.hl7.fhir.r5.context.IWorkerContext;
 import org.hl7.fhir.r5.elementmodel.Manager.FhirFormat;
 import org.hl7.fhir.r5.model.Coding;
 import org.hl7.fhir.r5.model.StructureDefinition;
+import org.hl7.fhir.r5.model.UsageContext;
 import org.hl7.fhir.r5.utils.validation.constants.BestPracticeWarningLevel;
 import org.hl7.fhir.r5.utils.validation.constants.CheckDisplayOption;
 import org.hl7.fhir.r5.utils.validation.constants.IdStatus;
@@ -52,6 +54,8 @@ import java.util.List;
    *
    */
 public interface IResourceValidator {
+  
+  IWorkerContext getContext();
 
   /**
    * how much to check displays for coded elements 
@@ -101,6 +105,12 @@ public interface IResourceValidator {
   
   boolean isForPublication();
   IResourceValidator setForPublication(boolean forPublication);
+  
+  boolean isExample();
+  IResourceValidator setExample(boolean example);
+  
+  // used to decide whether additional bindings, constraints etc apply
+  public List<UsageContext> getUsageContexts();
   
   public boolean isWarnOnDraftOrExperimental();
 

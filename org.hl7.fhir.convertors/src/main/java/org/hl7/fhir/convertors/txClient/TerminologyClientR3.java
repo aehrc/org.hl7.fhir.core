@@ -2,6 +2,7 @@ package org.hl7.fhir.convertors.txClient;
 
 import java.net.URISyntaxException;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.Map;
 
 /*
@@ -36,6 +37,7 @@ import java.util.Map;
 
 import org.hl7.fhir.convertors.conv30_50.resources30_50.TerminologyCapabilities30_50;
 import org.hl7.fhir.convertors.factory.VersionConvertorFactory_30_50;
+import org.hl7.fhir.convertors.factory.VersionConvertorFactory_40_50;
 import org.hl7.fhir.dstu3.model.Resource;
 import org.hl7.fhir.dstu3.utils.client.FHIRToolingClient;
 import org.hl7.fhir.exceptions.FHIRException;
@@ -45,6 +47,7 @@ import org.hl7.fhir.r5.model.CapabilityStatement;
 import org.hl7.fhir.r5.model.Parameters;
 import org.hl7.fhir.r5.model.TerminologyCapabilities;
 import org.hl7.fhir.r5.model.ValueSet;
+import org.hl7.fhir.r5.model.Parameters.ParametersParameterComponent;
 import org.hl7.fhir.r5.terminologies.client.ITerminologyClient;
 import org.hl7.fhir.r5.utils.client.network.ClientHeaders;
 import org.hl7.fhir.utilities.FhirPublication;
@@ -101,10 +104,10 @@ public class TerminologyClientR3 implements ITerminologyClient {
   }
 
   @Override
-  public ValueSet expandValueset(ValueSet vs, Parameters p, Map<String, String> params) throws FHIRException {
+  public ValueSet expandValueset(ValueSet vs, Parameters p) throws FHIRException {
     org.hl7.fhir.dstu3.model.ValueSet vs2 = (org.hl7.fhir.dstu3.model.ValueSet) VersionConvertorFactory_30_50.convertResource(vs);
     org.hl7.fhir.dstu3.model.Parameters p2 = (org.hl7.fhir.dstu3.model.Parameters) VersionConvertorFactory_30_50.convertResource(p);
-    vs2 = client.expandValueset(vs2, p2, params); // todo: second parameter
+    vs2 = client.expandValueset(vs2, p2); // todo: second parameter
     return (ValueSet) VersionConvertorFactory_30_50.convertResource(vs2);
   }
 
@@ -123,9 +126,14 @@ public class TerminologyClientR3 implements ITerminologyClient {
   }
 
   @Override
-  public ITerminologyClient setTimeout(int i) {
-    client.setTimeout(i);
+  public ITerminologyClient setTimeoutFactor(int i) {
+    client.setTimeoutFactor(i);
     return this;
+  }
+  
+  @Override
+  public ToolingClientLogger getLogger() {
+    return client.getLogger();
   }
 
   @Override
@@ -148,6 +156,11 @@ public class TerminologyClientR3 implements ITerminologyClient {
   @Override
   public Parameters lookupCode(Map<String, String> params) throws FHIRException {
     return (Parameters) VersionConvertorFactory_30_50.convertResource(client.lookupCode(params));
+  }
+
+  @Override
+  public Parameters lookupCode(Parameters params) throws FHIRException {
+    return (Parameters) VersionConvertorFactory_30_50.convertResource(client.lookupCode((org.hl7.fhir.dstu3.model.Parameters) VersionConvertorFactory_30_50.convertResource(params)));
   }
 
   @Override
@@ -193,6 +206,7 @@ public class TerminologyClientR3 implements ITerminologyClient {
     if (this.clientHeaders != null) {
       this.client.setClientHeaders(this.clientHeaders.headers());
     }
+    this.client.setVersionInMimeTypes(true);
     return this;
   }
 
@@ -213,8 +227,39 @@ public class TerminologyClientR3 implements ITerminologyClient {
   }
 
   @Override
-  public ITerminologyClient setLanguage(String lang) {
-    client.setLanguage(lang);
+  public ITerminologyClient setAcceptLanguage(String lang) {
+    client.setAcceptLanguage(lang);
     return this;
   }
+  
+  @Override
+  public ITerminologyClient setContentLanguage(String lang) {
+    client.setContentLanguage(lang);
+    return this;
+  }
+  
+  @Override
+  public int getUseCount() {
+    return client.getUseCount();
+  }
+
+  @Override
+  public Bundle search(String type, String criteria) {   
+    org.hl7.fhir.dstu3.model.Bundle result = client.search(type, criteria);
+    return result == null ? null : (Bundle) VersionConvertorFactory_30_50.convertResource(result);
+
+  }
+
+  @Override
+  public Parameters subsumes(Parameters pin) throws FHIRException { 
+    org.hl7.fhir.dstu3.model.Parameters p2 = (org.hl7.fhir.dstu3.model.Parameters) VersionConvertorFactory_30_50.convertResource(pin);
+    p2 = client.operateType(org.hl7.fhir.dstu3.model.CodeSystem.class, "subsumes", p2);
+    return (Parameters) VersionConvertorFactory_30_50.convertResource(p2);
+  }
+
+  @Override
+  public Parameters translate(Parameters params) throws FHIRException {
+    return (Parameters) VersionConvertorFactory_30_50.convertResource(client.transform((org.hl7.fhir.dstu3.model.Parameters) VersionConvertorFactory_30_50.convertResource(params)));
+  }
+
 }

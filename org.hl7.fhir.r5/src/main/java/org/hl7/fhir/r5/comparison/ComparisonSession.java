@@ -25,6 +25,8 @@ import org.hl7.fhir.r5.model.CodeSystem;
 import org.hl7.fhir.r5.model.Resource;
 import org.hl7.fhir.r5.model.StructureDefinition;
 import org.hl7.fhir.r5.model.ValueSet;
+import org.hl7.fhir.r5.renderers.utils.RenderingContext;
+import org.hl7.fhir.utilities.i18n.RenderingI18nContext;
 
 public class ComparisonSession {
 
@@ -39,8 +41,9 @@ public class ComparisonSession {
   private String title;
   private ProfileKnowledgeProvider pkpLeft;
   private ProfileKnowledgeProvider pkpRight;
+  private RenderingI18nContext i18n;
   
-  public ComparisonSession(IWorkerContext contextLeft, IWorkerContext contextRight, String title, ProfileKnowledgeProvider pkpLeft, ProfileKnowledgeProvider pkpRight) {
+  public ComparisonSession(RenderingI18nContext i18n, IWorkerContext contextLeft, IWorkerContext contextRight, String title, ProfileKnowledgeProvider pkpLeft, ProfileKnowledgeProvider pkpRight) {
     super();
     this.contextLeft = contextLeft;
     this.contextRight = contextRight;
@@ -48,6 +51,7 @@ public class ComparisonSession {
     this.title = title;
     this.pkpLeft = pkpLeft;
     this.pkpRight = pkpRight;
+    this.i18n = i18n;
     debug = false;
   }
   
@@ -109,9 +113,9 @@ public class ComparisonSession {
           throw new FHIRException("Unable to compare resources of type "+left.fhirType()+" and "+right.fhirType());
         }
       } catch (Throwable e) {
-//        if (debug) {
+        if (debug) {
           e.printStackTrace();
-//        }
+        }
         ResourceComparer.PlaceHolderComparison csc = new ResourceComparer.PlaceHolderComparison(left, right, e);
         compares.put(key, csc);
         return csc;      
@@ -175,11 +179,18 @@ public class ComparisonSession {
     return annotate;
   }
 
+  public RenderingI18nContext getI18n() {
+    return i18n;
+  }
+
   public void setAnnotate(boolean annotate) {
     this.annotate = annotate;
   }
 
   private VersionComparisonAnnotation getAnnotation(Base b) {
+    if (b == null) {
+      return null;
+    }
     if (b.hasUserData(VersionComparisonAnnotation.USER_DATA_NAME)) {
       return (VersionComparisonAnnotation) b.getUserData(VersionComparisonAnnotation.USER_DATA_NAME);
     } else {
@@ -203,8 +214,14 @@ public class ComparisonSession {
 
   public void markDeleted(Base parent, String name, Base other) {
     if (isAnnotate() && other != null) {
-      getAnnotation(parent).deleted(name, other);
-      getAnnotation(other).deleted();
+      VersionComparisonAnnotation annotation = getAnnotation(parent);
+      if (annotation != null) {
+        annotation.deleted(name, other);
+      }
+      annotation = getAnnotation(other);
+      if (annotation != null) {
+        annotation.deleted();
+      }
     }
   }
 

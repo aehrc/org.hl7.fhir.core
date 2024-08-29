@@ -47,6 +47,7 @@ import java.util.Set;
 import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.exceptions.FHIRFormatError;
 import org.hl7.fhir.utilities.StringPair;
+import org.hl7.fhir.utilities.TextFile;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.i18n.I18nConstants;
 import org.hl7.fhir.utilities.xhtml.XhtmlNode.Location;
@@ -59,6 +60,7 @@ import org.xmlpull.v1.XmlPullParserException;
 public class XhtmlParser {
   public static final String XHTML_NS = "http://www.w3.org/1999/xhtml";
   private static final char END_OF_CHARS = (char) -1;
+  private static final boolean DEBUG = false;
 
   public class NamespaceNormalizationMap {
 
@@ -968,9 +970,9 @@ public class XhtmlParser {
       throw new FHIRFormatError("Invalid literal declaration following text: " + s);
     else if (c.charAt(0) == '#') {
       if (isInteger(c.substring(1), 10))
-        s.append((char) Integer.parseInt(c.substring(1)));
+        s.append(Character.toString(Integer.parseInt(c.substring(1))));
       else if (c.charAt(1) == 'x' && isInteger(c.substring(2), 16))
-        s.append((char) Integer.parseInt(c.substring(2), 16));
+        s.append(Character.toString(Integer.parseInt(c.substring(2), 16)));
     } else if (declaredEntities.containsKey(c)) {
       s.append(declaredEntities.get(c));
     } else {
@@ -1283,9 +1285,30 @@ public class XhtmlParser {
     }
   }
 
+  public List<XhtmlNode> parseMDFragment(String source) throws IOException, FHIRException  {
+    XhtmlNode div = parseFragment( "<div>"+source+"</div>");
+    return div.getChildNodes();
+  }
+  
+  public List<XhtmlNode> parseMDFragmentStripParas(String source) throws IOException, FHIRException  {
+    XhtmlNode div = parseFragment( "<div>"+source+"</div>");
+    List<XhtmlNode> res = new ArrayList<>();
+    for (XhtmlNode x : div.getChildNodes()) {
+      res.addAll(x.getChildNodes());
+    }
+    return res;
+  }
+  
   public XhtmlNode parseFragment(String source) throws IOException, FHIRException  {
     rdr = new StringReader(source);
-    return parseFragment();
+    try {
+      return parseFragment();
+    } catch (Exception e) {
+      if (DEBUG) {
+        TextFile.stringToFile(source, Utilities.path("[tmp]", "html-fail.xhtml"));
+      }
+      throw e;
+    }
   }
 
   public XhtmlNode parseFragment(InputStream input) throws IOException, FHIRException  {

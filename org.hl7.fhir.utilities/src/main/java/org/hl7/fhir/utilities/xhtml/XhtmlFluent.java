@@ -11,8 +11,10 @@ import org.hl7.fhir.utilities.Utilities;
 public abstract class XhtmlFluent {
 
   protected abstract XhtmlNode addTag(String string);
+  protected abstract XhtmlNode addTag(int index, String string);
   protected abstract XhtmlNode addText(String cnt);
   protected abstract void addChildren(XhtmlNodeList childNodes);
+  protected abstract int indexOfNode(XhtmlNode node);
   
   public XhtmlNode h1() {
     return addTag("h1");
@@ -30,6 +32,18 @@ public abstract class XhtmlFluent {
     return addTag("h"+Integer.toString(level));
   }
   
+  /* Add header with an ID */
+  public XhtmlNode h(int level, String id) {
+    if (level < 1 || level > 6) {
+      throw new FHIRException("Illegal Header level "+level);
+    }
+    XhtmlNode res =  addTag("h"+Integer.toString(level));
+    if (!Utilities.noString(id)) {
+      res.attribute("id", id);
+    }
+    return res;
+  }
+
   public XhtmlNode h3() {
     return addTag("h3");
   }
@@ -47,6 +61,14 @@ public abstract class XhtmlFluent {
   
   public XhtmlNode tr() {
     return addTag("tr");
+  }
+  
+  public XhtmlNode tr(XhtmlNode tr) {
+    return addTag(indexOfNode(tr)+1, "tr");
+  }
+  
+  public XhtmlNode th(int index) {
+    return addTag(index, "th");
   }
   
   public XhtmlNode th() {
@@ -169,7 +191,19 @@ public abstract class XhtmlFluent {
   }
 
   public XhtmlNode img(String src, String alt) {
-    return addTag("img").attribute("src", src).attribute("alt", alt);    
+    if (alt == null) {
+      return addTag("img").attribute("src", src).attribute("alt", ".");
+    } else {
+      return addTag("img").attribute("src", src).attribute("alt", alt);
+    }
+  }
+
+  public XhtmlNode imgT(String src, String alt) {
+    if (alt == null) {
+      return addTag("img").attribute("src", src).attribute("alt", ".");
+    } else {
+      return addTag("img").attribute("src", src).attribute("alt", alt).attribute("title", alt);
+    }
   }
 
   public XhtmlNode img(String src, String alt, String title) {
@@ -264,6 +298,18 @@ public abstract class XhtmlFluent {
     }        
    }
 
+  // differs from tx because it returns the owner node, not the created text
+  public XhtmlFluent txN(String cnt) {
+    addText(cnt);
+    return this;
+  }
 
-  
+
+  public XhtmlFluent iff(boolean test) {
+    if (test) {
+      return this;
+    } else {
+      return new XhtmlNode(NodeType.Element, "span"); // which will never be connected
+    }
+  }
 }

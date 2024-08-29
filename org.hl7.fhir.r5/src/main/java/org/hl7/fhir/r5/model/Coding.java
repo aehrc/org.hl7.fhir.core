@@ -424,6 +424,23 @@ public class Coding extends DataType implements IBaseCoding, ICompositeType, ICo
         return value;
       }
 
+  @Override
+  public void removeChild(String name, Base value) throws FHIRException {
+        if (name.equals("system")) {
+          this.system = null;
+        } else if (name.equals("version")) {
+          this.version = null;
+        } else if (name.equals("code")) {
+          this.code = null;
+        } else if (name.equals("display")) {
+          this.display = null;
+        } else if (name.equals("userSelected")) {
+          this.userSelected = null;
+        } else
+          super.removeChild(name, value);
+        
+      }
+
       @Override
       public Base makeProperty(int hash, String name) throws FHIRException {
         switch (hash) {
@@ -539,15 +556,34 @@ public class Coding extends DataType implements IBaseCoding, ICompositeType, ICo
       }
       
       public String toString() {
-        String base = getSystem();
+        String base = hasSystem() ? getSystem() : "";
         if (hasVersion())
           base = base+"|"+getVersion();
         base = base + "#"+getCode();
         if (hasDisplay())
           base = base+": '"+getDisplay()+"'";
-        return base;
-        
+        return base;        
       } 
+      
+      public static Coding fromLiteral(String value) {
+        String sv = value.contains("#") ? value.substring(0, value.indexOf("#")) : value; 
+        String cp = value.contains("#") ? value.substring(value.indexOf("#")+1) : null;
+        
+        String system = sv.contains("|") ? sv.substring(0, sv.indexOf("|")) : sv;
+        String version = sv.contains("|") ? sv.substring(sv.indexOf("|")+1) : null;
+        
+        String code = cp != null && cp.contains("'") ? cp.substring(0, cp.indexOf("'")) : cp;
+        String display = cp != null && cp.contains("'") ? cp.substring(cp.indexOf("'")+1) : null;
+        if (display != null) {
+          display = display.trim();
+          display = display.substring(0, display.length() -1);
+        }
+        if ((system == null || !Utilities.isAbsoluteUrl(system)) && code == null) {
+          return null;
+        } else {
+          return new Coding(system, version, code, display);
+        }
+      }
 
       public boolean matches(Coding other) {
         return other.hasCode() && this.hasCode() && other.hasSystem() && this.hasSystem() && this.getCode().equals(other.getCode()) && this.getSystem().equals(other.getSystem()) ;
@@ -611,6 +647,10 @@ public class Coding extends DataType implements IBaseCoding, ICompositeType, ICo
         setDisplay(theDisplay);
       }      
 // end addition
+
+      public String getVersionedSystem() {
+        return hasVersion() ? getSystem()+"|"+getVersion() : getSystem();
+      }
 
 }
 

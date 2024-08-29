@@ -36,12 +36,12 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -52,8 +52,9 @@ import org.apache.commons.io.IOUtils;
 import org.hl7.fhir.exceptions.DefinitionException;
 import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.exceptions.FHIRFormatError;
+import org.hl7.fhir.exceptions.TerminologyServiceException;
 import org.hl7.fhir.r5.context.CanonicalResourceManager.CanonicalResourceProxy;
-import org.hl7.fhir.r5.context.IWorkerContext.ILoggingService.LogCategory;
+import org.hl7.fhir.r5.context.ILoggingService.LogCategory;
 import org.hl7.fhir.r5.formats.IParser;
 import org.hl7.fhir.r5.formats.JsonParser;
 import org.hl7.fhir.r5.formats.XmlParser;
@@ -63,21 +64,23 @@ import org.hl7.fhir.r5.model.StructureDefinition.StructureDefinitionKind;
 import org.hl7.fhir.r5.model.StructureDefinition.TypeDerivationRule;
 import org.hl7.fhir.r5.model.StructureMap.StructureMapModelMode;
 import org.hl7.fhir.r5.model.StructureMap.StructureMapStructureComponent;
-import org.hl7.fhir.r5.profilemodel.PEDefinition;
-import org.hl7.fhir.r5.profilemodel.PEBuilder;
-import org.hl7.fhir.r5.terminologies.CodeSystemUtilities;
 import org.hl7.fhir.r5.terminologies.JurisdictionUtilities;
 import org.hl7.fhir.r5.terminologies.client.ITerminologyClient;
+import org.hl7.fhir.r5.terminologies.client.TerminologyClientContext;
+import org.hl7.fhir.r5.terminologies.client.TerminologyClientManager;
+import org.hl7.fhir.r5.terminologies.client.TerminologyClientManager.ITerminologyClientFactory;
+import org.hl7.fhir.r5.terminologies.client.TerminologyClientR5;
 import org.hl7.fhir.r5.utils.validation.IResourceValidator;
 import org.hl7.fhir.r5.utils.R5Hacker;
 import org.hl7.fhir.r5.utils.XVerExtensionManager;
 import org.hl7.fhir.utilities.ByteProvider;
-import org.hl7.fhir.utilities.CSFileInputStream;
 import org.hl7.fhir.utilities.MagicResources;
 import org.hl7.fhir.utilities.TextFile;
 import org.hl7.fhir.utilities.TimeTracker;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.VersionUtilities;
+import org.hl7.fhir.utilities.filesystem.CSFileInputStream;
+import org.hl7.fhir.utilities.filesystem.ManagedFileAccess;
 import org.hl7.fhir.utilities.i18n.I18nConstants;
 import org.hl7.fhir.utilities.npm.BasePackageCacheManager;
 import org.hl7.fhir.utilities.npm.NpmPackage;
@@ -97,22 +100,24 @@ public class SimpleWorkerContext extends BaseWorkerContext implements IWorkerCon
 
     private final String filename;
     private final IContextResourceLoader loader;
+    private PackageInformation pi;
 
-    public PackageResourceLoader(PackageResourceInformation pri, IContextResourceLoader loader) {
-      super(pri.getResourceType(), pri.getId(), loader == null ? pri.getUrl() :loader.patchUrl(pri.getUrl(), pri.getResourceType()), pri.getVersion(), pri.getSupplements());
+    public PackageResourceLoader(PackageResourceInformation pri, IContextResourceLoader loader, PackageInformation pi) {
+      super(pri.getResourceType(), pri.getId(), loader == null ? pri.getUrl() :loader.patchUrl(pri.getUrl(), pri.getResourceType()), pri.getVersion(), pri.getSupplements(), pri.getDerivation(), pri.getContent());
       this.filename = pri.getFilename();
       this.loader = loader;
+      this.pi = pi;
     }
 
     @Override
     public CanonicalResource loadResource() {
       try {
-        FileInputStream f = new FileInputStream(filename);
+        FileInputStream f = ManagedFileAccess.inStream(filename);
         try  {
           if (loader != null) {
-            return R5Hacker.fixR5BrokenResource((CanonicalResource) loader.loadResource(f, true));
+            return setPi(R5Hacker.fixR5BrokenResource((CanonicalResource) loader.loadResource(f, true)));
           } else {
-            return R5Hacker.fixR5BrokenResource((CanonicalResource) new JsonParser().parse(f));
+            return setPi(R5Hacker.fixR5BrokenResource((CanonicalResource) new JsonParser().parse(f)));
           }
         } finally {
           f.close();
@@ -120,6 +125,11 @@ public class SimpleWorkerContext extends BaseWorkerContext implements IWorkerCon
       } catch (Exception e) {
         throw new FHIRException("Error loading "+filename+": "+e.getMessage(), e);
       }
+    }
+
+    private CanonicalResource setPi(CanonicalResource cr) {
+      cr.setSourcePackage(pi);
+      return cr;
     }
   }
 
@@ -204,7 +214,7 @@ public class SimpleWorkerContext extends BaseWorkerContext implements IWorkerCon
     private final boolean allowLoadingDuplicates;
 
     @With
-    private final IWorkerContext.ILoggingService loggingService;
+    private final org.hl7.fhir.r5.context.ILoggingService loggingService;
 
     public SimpleWorkerContextBuilder() {
       cacheTerminologyClientErrors = false;
@@ -231,7 +241,7 @@ public class SimpleWorkerContext extends BaseWorkerContext implements IWorkerCon
     }
 
     private SimpleWorkerContext build(SimpleWorkerContext context) throws IOException {
-      context.initTS(terminologyCachePath);
+      context.initTxCache(terminologyCachePath);
       context.setUserAgent(userAgent);
       context.setLogger(loggingService);
       context.cacheResource(new org.hl7.fhir.r5.formats.JsonParser().parse(MagicResources.spdxCodesAsData()));
@@ -241,6 +251,7 @@ public class SimpleWorkerContext extends BaseWorkerContext implements IWorkerCon
     public SimpleWorkerContext fromPackage(NpmPackage pi) throws IOException, FHIRException {
       SimpleWorkerContext context = getSimpleWorkerContextInstance();
       context.setAllowLoadingDuplicates(allowLoadingDuplicates);
+      context.terminologyClientManager.setFactory(TerminologyClientR5.factory());
       context.loadFromPackage(pi, null);
       return build(context);
     }
@@ -249,6 +260,7 @@ public class SimpleWorkerContext extends BaseWorkerContext implements IWorkerCon
       SimpleWorkerContext context = getSimpleWorkerContextInstance();
       context.setAllowLoadingDuplicates(allowLoadingDuplicates);      
       context.version = pi.getNpm().asString("version");
+      context.terminologyClientManager.setFactory(loader.txFactory());
       context.loadFromPackage(pi, loader);
       context.finishLoading(genSnapshots);
       return build(context);
@@ -320,28 +332,48 @@ public class SimpleWorkerContext extends BaseWorkerContext implements IWorkerCon
       loadBytes(name, stream);
   }
 
-  public String connectToTSServer(ITerminologyClient client, String log) {
+  public void connectToTSServer(ITerminologyClientFactory factory, ITerminologyClient client, boolean useEcosystem) {
+    terminologyClientManager.setFactory(factory);
+    if (txLog == null) {
+      txLog = client.getLogger();
+    }
+    TerminologyClientContext tcc = terminologyClientManager.setMasterClient(client, useEcosystem);
+    txLog("Connect to "+client.getAddress());
     try {
-      txLog("Connect to "+client.getAddress());
-      tcc.setClient(client);
+      tcc.initialize();  
+    } catch (Exception e) {
+      if (canRunWithoutTerminology) {
+        noTerminologyServer = true;
+        logger.logMessage("==============!! Running without terminology server !! ==============");
+        if (terminologyClientManager.getMasterClient() != null) {
+          logger.logMessage("txServer = "+ terminologyClientManager.getMasterClient().getId());
+          logger.logMessage("Error = "+e.getMessage()+"");
+        }
+        logger.logMessage("=====================================================================");
+      } else {
+        e.printStackTrace();
+        throw new TerminologyServiceException(e);
+      }
+    }      
+  }
+  
+  public void connectToTSServer(ITerminologyClientFactory factory, String address, String software, String log, boolean useEcosystem) {
+    try {
+      terminologyClientManager.setFactory(factory);
       if (log != null && (log.endsWith(".htm") || log.endsWith(".html"))) {
         txLog = new HTMLClientLogger(log);
       } else {
         txLog = new TextClientLogger(log);
-      }
-      tcc.getClient().setLogger(txLog);
-      tcc.getClient().setUserAgent(userAgent);
-
-      final CapabilityStatement capabilitiesStatementQuick = txCache.hasCapabilityStatement() ? txCache.getCapabilityStatement() : tcc.getClient().getCapabilitiesStatementQuick();
-      txCache.cacheCapabilityStatement(capabilitiesStatementQuick);
-
-      final TerminologyCapabilities capabilityStatement = txCache.hasTerminologyCapabilities() ? txCache.getTerminologyCapabilities() : tcc.getClient().getTerminologyCapabilities();
-      txCache.cacheTerminologyCapabilities(capabilityStatement);
-
-      setTxCaps(capabilityStatement);
-      return capabilitiesStatementQuick.getSoftware().getVersion();
+      }      
+      ITerminologyClient client = factory.makeClient("tx-server", address, software, txLog);
+      // txFactory.makeClient("Tx-Server", txServer, "fhir/publisher", null)
+//      terminologyClientManager.setLogger(txLog);
+//      terminologyClientManager.setUserAgent(userAgent);
+      connectToTSServer(factory, client, useEcosystem);
+      
     } catch (Exception e) {
-      throw new FHIRException(formatMessage(canNoTS ? I18nConstants.UNABLE_TO_CONNECT_TO_TERMINOLOGY_SERVER_USE_PARAMETER_TX_NA_TUN_RUN_WITHOUT_USING_TERMINOLOGY_SERVICES_TO_VALIDATE_LOINC_SNOMED_ICDX_ETC_ERROR__ : I18nConstants.UNABLE_TO_CONNECT_TO_TERMINOLOGY_SERVER, e.getMessage(), client.getAddress()), e);
+      e.printStackTrace();
+      throw new FHIRException(formatMessage(canNoTS ? I18nConstants.UNABLE_TO_CONNECT_TO_TERMINOLOGY_SERVER_USE_PARAMETER_TX_NA_TUN_RUN_WITHOUT_USING_TERMINOLOGY_SERVICES_TO_VALIDATE_LOINC_SNOMED_ICDX_ETC_ERROR__ : I18nConstants.UNABLE_TO_CONNECT_TO_TERMINOLOGY_SERVER, e.getMessage(), address), e);
     }
   }
 
@@ -475,9 +507,15 @@ public class SimpleWorkerContext extends BaseWorkerContext implements IWorkerCon
       packageTracker.packageLoaded(pi.id(), pi.version());
     }
     
+    String of = pi.getFolders().get("package").getFolderPath();
+    if (of != null) {
+      oidSources.add(new OIDSource(of, pi.vid()));
+    }
+    
     if ((types == null || types.size() == 0) &&  loader != null) {
       types = loader.getTypes();
     }
+    PackageInformation pii = new PackageInformation(pi);
     if (VersionUtilities.isR2Ver(pi.fhirVersion()) || !pi.canLazyLoad() || !allowLazyLoading) {
       // can't lazy load R2 because of valueset/codesystem implementation
       if (types == null || types.size() == 0) {
@@ -485,7 +523,7 @@ public class SimpleWorkerContext extends BaseWorkerContext implements IWorkerCon
       }
       for (String s : pi.listResources(types)) {
         try {
-          loadDefinitionItem(s, pi.load("package", s), loader, null, new PackageInformation(pi));
+          loadDefinitionItem(s, pi.load("package", s), loader, null, pii);
           t++;
         } catch (Exception e) {
           throw new FHIRException(formatMessage(I18nConstants.ERROR_READING__FROM_PACKAGE__, s, pi.name(), pi.version(), e.getMessage()), e);
@@ -499,9 +537,9 @@ public class SimpleWorkerContext extends BaseWorkerContext implements IWorkerCon
         if (!pri.getFilename().contains("ig-r4") && (loader == null || loader.wantLoad(pi, pri))) {
           try {
             if (!pri.hasId()) {
-              loadDefinitionItem(pri.getFilename(), new FileInputStream(pri.getFilename()), loader, null, new PackageInformation(pi));
+              loadDefinitionItem(pri.getFilename(), ManagedFileAccess.inStream(pri.getFilename()), loader, null, pii);
             } else {
-              registerResourceFromPackage(new PackageResourceLoader(pri, loader), new PackageInformation(pi));
+              registerResourceFromPackage(new PackageResourceLoader(pri, loader, pii), pii);
             }
             t++;
           } catch (FHIRException e) {
@@ -518,6 +556,9 @@ public class SimpleWorkerContext extends BaseWorkerContext implements IWorkerCon
 	    if (version.equals("current")) {
 	      version = "5.0.0";
 	    }
+	  }
+	  if (loader != null && terminologyClientManager.getFactory() == null) {
+	    terminologyClientManager.setFactory(loader.txFactory());
 	  }
 	  return t;
 	}
@@ -597,8 +638,8 @@ public class SimpleWorkerContext extends BaseWorkerContext implements IWorkerCon
  
 
   public void loadBinariesFromFolder(String folder) throws IOException {
-    for (String n : new File(folder).list()) {
-      loadBytes(n, new FileInputStream(Utilities.path(folder, n)));
+    for (String n : ManagedFileAccess.file(folder).list()) {
+      loadBytes(n, ManagedFileAccess.inStream(Utilities.path(folder, n)));
     }
   }
   
@@ -609,7 +650,7 @@ public class SimpleWorkerContext extends BaseWorkerContext implements IWorkerCon
   }
   
   public void loadFromFolder(String folder) throws IOException {
-    for (String n : new File(folder).list()) {
+    for (String n : ManagedFileAccess.file(folder).list()) {
       if (n.endsWith(".json")) 
         loadFromFile(Utilities.path(folder, n), new JsonParser());
       else if (n.endsWith(".xml")) 
@@ -620,7 +661,7 @@ public class SimpleWorkerContext extends BaseWorkerContext implements IWorkerCon
   private void loadFromFile(String filename, IParser p) {
   	Resource r; 
   	try {
-  		r = p.parse(new FileInputStream(filename));
+  		r = p.parse(ManagedFileAccess.inStream(filename));
       if (r.getResourceType() == ResourceType.Bundle) {
         for (BundleEntryComponent e : ((Bundle) r).getEntry()) {
           cacheResource(e.getResource());
@@ -765,7 +806,21 @@ public class SimpleWorkerContext extends BaseWorkerContext implements IWorkerCon
   }
 
   public boolean hasPackage(String idAndver) {
-    return loadedPackages.contains(idAndver);
+    if (loadedPackages.contains(idAndver)) {
+      return true;
+    }
+    // not clear whether the same logic should apply to other cross-version packages?
+    if (idAndver.startsWith("hl7.fhir.uv.extensions")) {
+      String v = idAndver.substring(idAndver.lastIndexOf("#")+1);
+      for (String s : loadedPackages) {
+        String v2 = s.substring(s.lastIndexOf("#")+1);
+        if (s.startsWith("hl7.fhir.uv.extensions.") && VersionUtilities.versionsMatch(v, v2)) {
+          return true;
+        }
+      }
+    }
+    return false;
+    
   }
 
   @Override
@@ -794,6 +849,8 @@ public class SimpleWorkerContext extends BaseWorkerContext implements IWorkerCon
   public String getSpecUrl() {
     return VersionUtilities.getSpecUrl(getVersion())+"/";
   }
+
+
 
 }
 

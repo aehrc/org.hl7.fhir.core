@@ -1,11 +1,11 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
         <groupId>ca.uhn.hapi.fhir</groupId>
         <artifactId>org.hl7.fhir.core</artifactId>
-        <version>6.1.3-SNAPSHOT</version>
+        <version>6.3.16-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
@@ -14,7 +14,7 @@
 
     <properties>
         <checkstyle_config_location>${project.parent.basedir}</checkstyle_config_location>
-        <info_cqframework_version>1.5.12</info_cqframework_version>
+        <info_cqframework_version>2.11.0</info_cqframework_version>
     </properties>
 
     <dependencies>
@@ -129,13 +129,6 @@
             <groupId>info.cqframework</groupId>
             <artifactId>model</artifactId>
             <version>${info_cqframework_version}</version>
-            <exclusions>
-                <!-- exclude this in favor of 1.9.4 for security reasons -->
-                <exclusion>
-                    <groupId>commons-beanutils</groupId>
-                    <artifactId>commons-beanutils</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
         <dependency>
             <groupId>info.cqframework</groupId>
@@ -156,11 +149,6 @@
             <groupId>info.cqframework</groupId>
             <artifactId>qdm</artifactId>
             <version>${info_cqframework_version}</version>
-        </dependency>
-        <dependency>
-            <groupId>commons-beanutils</groupId>
-            <artifactId>commons-beanutils</artifactId>
-            <version>1.9.4</version>
         </dependency>
         <!-- OkHttpDependency -->
         <dependency>
@@ -197,13 +185,13 @@
         </dependency>
 
         <dependency>
-            <groupId>com.atlassian.commonmark</groupId>
+            <groupId>org.commonmark</groupId>
             <artifactId>commonmark</artifactId>
             <optional>true</optional>
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>com.atlassian.commonmark</groupId>
+            <groupId>org.commonmark</groupId>
             <artifactId>commonmark-ext-gfm-tables</artifactId>
             <optional>true</optional>
             <scope>test</scope>
@@ -262,24 +250,18 @@
         </dependency>
 
         <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
             <groupId>org.junit.platform</groupId>
             <artifactId>junit-platform-launcher</artifactId>
             <scope>provided</scope>
         </dependency>
 
         <!-- End to end -->
-        <dependency>
-            <groupId>org.seleniumhq.selenium</groupId>
-            <artifactId>selenium-chrome-driver</artifactId>
-            <version>3.141.59</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>io.github.bonigarcia</groupId>
-            <artifactId>webdrivermanager</artifactId>
-            <version>3.6.2</version>
-            <scope>test</scope>
-        </dependency>
     </dependencies>
 
     <build>

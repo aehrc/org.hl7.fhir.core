@@ -12,6 +12,8 @@ import org.hl7.fhir.r5.model.Resource;
 import org.hl7.fhir.r5.utils.ResourceUtilities;
 import org.hl7.fhir.r5.utils.client.EFhirClientException;
 import org.hl7.fhir.r5.utils.client.ResourceFormat;
+import org.hl7.fhir.utilities.MimeType;
+import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.settings.FhirSettings;
 
 import javax.annotation.Nonnull;
@@ -74,7 +76,6 @@ public class FhirRequestBuilder {
   /**
    * Adds necessary headers for all REST requests.
    * <li>User-Agent : hapi-fhir-tooling-client</li>
-   * <li>Accept-Charset : {@link FhirRequestBuilder#DEFAULT_CHARSET}</li>
    *
    * @param request {@link Request.Builder} to add default headers to.
    */
@@ -82,7 +83,6 @@ public class FhirRequestBuilder {
     if (headers == null || !headers.names().contains("User-Agent")) {
       request.addHeader("User-Agent", "hapi-fhir-tooling-client");
     }
-    request.addHeader("Accept-Charset", DEFAULT_CHARSET);
   }
 
   /**
@@ -92,7 +92,9 @@ public class FhirRequestBuilder {
    */
   protected static void addResourceFormatHeaders(Request.Builder request, String format) {
     request.addHeader("Accept", format);
-    request.addHeader("Content-Type", format + ";charset=" + DEFAULT_CHARSET);
+    if (Utilities.existsInList(request.getMethod$okhttp(), "POST", "PUT")) {
+      request.addHeader("Content-Type", format + ";charset=" + DEFAULT_CHARSET);
+    }
   }
 
   /**
@@ -309,9 +311,10 @@ public class FhirRequestBuilder {
     if (StringUtils.isBlank(format)) {
       format = ResourceFormat.RESOURCE_XML.getHeader();
     }
-    if (format.equalsIgnoreCase("json") || format.equalsIgnoreCase(ResourceFormat.RESOURCE_JSON.getHeader())) {
+    MimeType mt = new MimeType(format);
+    if (mt.getBase().equalsIgnoreCase(ResourceFormat.RESOURCE_JSON.getHeader())) {
       return new JsonParser();
-    } else if (format.equalsIgnoreCase("xml") || format.equalsIgnoreCase(ResourceFormat.RESOURCE_XML.getHeader())) {
+    } else if (mt.getBase().equalsIgnoreCase(ResourceFormat.RESOURCE_XML.getHeader())) {
       return new XmlParser();
     } else {
       throw new EFhirClientException("Invalid format: " + format);

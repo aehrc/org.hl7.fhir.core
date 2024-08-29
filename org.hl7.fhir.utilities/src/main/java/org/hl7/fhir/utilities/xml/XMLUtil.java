@@ -55,10 +55,12 @@ import javax.xml.transform.stream.StreamResult;
 
 import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.utilities.Utilities;
+import org.hl7.fhir.utilities.filesystem.ManagedFileAccess;
 import org.w3c.dom.Attr;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 import org.w3c.dom.ls.DOMImplementationLS;
 import org.w3c.dom.ls.LSSerializer;
 import org.xml.sax.SAXException;
@@ -458,7 +460,7 @@ public class XMLUtil {
     DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
     factory.setNamespaceAware(false);
     DocumentBuilder builder = factory.newDocumentBuilder();
-    FileInputStream fs = new FileInputStream(filename);
+    FileInputStream fs = ManagedFileAccess.inStream(filename);
     try {
       return builder.parse(fs);
     } finally {
@@ -470,7 +472,7 @@ public class XMLUtil {
     DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
     factory.setNamespaceAware(ns);
     DocumentBuilder builder = factory.newDocumentBuilder();
-    FileInputStream fs = new FileInputStream(filename);
+    FileInputStream fs = ManagedFileAccess.inStream(filename);
     try {
       return builder.parse(fs);
     } finally {
@@ -499,11 +501,11 @@ public class XMLUtil {
     return e == null ? null : e.getAttribute(aname);
   }
 
-  public static void writeDomToFile(Document doc, String filename) throws TransformerException {
+  public static void writeDomToFile(Document doc, String filename) throws TransformerException, IOException {
     TransformerFactory transformerFactory = TransformerFactory.newInstance();
     Transformer transformer = transformerFactory.newTransformer();
     DOMSource source = new DOMSource(doc);
-    StreamResult streamResult =  new StreamResult(new File(filename));
+    StreamResult streamResult =  new StreamResult(ManagedFileAccess.file(filename));
     transformer.transform(source, streamResult);    
   }
 
@@ -601,5 +603,36 @@ public class XMLUtil {
     return e == null ? null : e.getTextContent();
   }
 
- 	
+  public static Element getFirstChild(Element res, String... names) {
+    Element node = getFirstChild(res);
+    while (node != null && !Utilities.existsInList(node.getLocalName(), names)) {
+      node = getNextSibling(node);
+    }
+    return node;
+  }
+
+  public static Element getLastChild(Element res, String... names) {
+    Element result = null;
+    Element node = getFirstChild(res);
+    while (node != null) {
+      if (Utilities.existsInList(node.getLocalName(), names)) {
+        result = node;
+      }
+      node = getNextSibling(node);
+    }
+    return result;
+  }
+
+  public static void clearChildren(Node node) {
+    NodeList nodeList = node.getChildNodes();
+    for (int i = nodeList.getLength() - 1; i >= 0; i--) {
+      Node item = nodeList.item(i);
+      if (item.hasChildNodes()) {
+        clearChildren(item);
+      }
+      node.removeChild(item);
+    };
+  }
+
+
 }

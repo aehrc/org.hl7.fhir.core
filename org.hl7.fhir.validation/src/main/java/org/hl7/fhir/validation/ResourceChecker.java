@@ -36,7 +36,7 @@ public class ResourceChecker {
       return null;
     }
     if (guessFromExtension) {
-      String ext = Utilities.getFileExtension(filename);
+      String ext = Utilities.getFileExtension(filename).toLowerCase();
       if (Utilities.existsInList(ext, "xml")) {
         return FhirFormat.XML;            
       }
@@ -48,6 +48,9 @@ public class ResourceChecker {
       }
       if (Utilities.existsInList(ext, "jwt", "jws")) {
         return Manager.FhirFormat.SHC;
+      }
+      if (Utilities.existsInList(ext, "ndjson")) {
+        return Manager.FhirFormat.NDJSON;
       }
       if (Utilities.existsInList(ext, "json")) {
         if (cnt.length > 2048) {
@@ -69,6 +72,9 @@ public class ResourceChecker {
           if (src.startsWith("shc:/")) {
             return FhirFormat.SHC;
           }
+          if (src.startsWith("shlink:/") || src.contains("#shlink:/")) {
+            return FhirFormat.SHL;
+          }
         } catch (Exception e) {
         }
         return Manager.FhirFormat.TEXT;
@@ -84,6 +90,14 @@ public class ResourceChecker {
     } catch (Exception e) {
       if (debug) {
         System.out.println("Not JSON: " + e.getMessage());
+      }
+    }
+    try {
+      Manager.parse(context, new ByteArrayInputStream(cnt), Manager.FhirFormat.NDJSON);
+      return Manager.FhirFormat.NDJSON;
+    } catch (Exception e) {
+      if (debug) {
+        System.out.println("Not NDJSON: " + e.getMessage());
       }
     }
     try {
@@ -104,9 +118,13 @@ public class ResourceChecker {
     }
     try {
       String s = new String(cnt, StandardCharsets.UTF_8);
-      if (s.startsWith("shc:/")) 
+      if (s.startsWith("shlink:/") || s.contains("#shlink:/")) {
+        return FhirFormat.SHL;
+      }
+      if (s.startsWith("shc:/")) {
         s = SHCParser.decodeQRCode(s);
-      JWT jwt = new SHCParser(context).decodeJWT(s);
+      }
+      JWT jwt = new SHCParser(context).decodeJWT(null, s);
       return Manager.FhirFormat.SHC;
     } catch (Exception e) {
       if (debug) {

@@ -2,6 +2,7 @@ package org.hl7.fhir.convertors.misc;
 
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -10,6 +11,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.Map.Entry;
 
 import javax.annotation.Nonnull;
@@ -35,7 +37,9 @@ import org.hl7.fhir.r5.model.Enumerations.FHIRVersionEnumFactory;
 import org.hl7.fhir.r5.model.ImplementationGuide;
 import org.hl7.fhir.r5.model.Resource;
 import org.hl7.fhir.utilities.TextFile;
+import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.VersionUtilities;
+import org.hl7.fhir.utilities.filesystem.ManagedFileAccess;
 import org.hl7.fhir.utilities.json.model.JsonArray;
 import org.hl7.fhir.utilities.json.model.JsonObject;
 import org.hl7.fhir.utilities.json.parser.JsonParser;
@@ -77,7 +81,7 @@ public class NpmPackageVersionConverter {
   }
 
   public void execute() throws IOException {
-    Map<String, byte[]> content = loadContentMap(new FileInputStream(source));
+    Map<String, byte[]> content = loadContentMap(ManagedFileAccess.inStream(source));
 
     Map<String, byte[]> output = new HashMap<>();
     output.put("package/package.json", convertPackage(content.get("package/package.json")));
@@ -118,11 +122,11 @@ public class NpmPackageVersionConverter {
       NpmPackageIndexBuilder indexer = indexers.get(n);
       if (indexer == null) {
         indexer = new NpmPackageIndexBuilder();
-        indexer.start();
+        indexer.start(Utilities.path("[tmp]", "tmp-"+UUID.randomUUID().toString()+".db"));
         indexers.put(n, indexer);
       }
       indexer.seeFile(s, b);
-      if (!s.equals(".index.json") && !s.equals("package.json")) {
+      if (!s.equals(".index.json") && !s.equals("package.json") && !s.equals(".index.db")) {
         TarArchiveEntry entry = new TarArchiveEntry(e.getKey());
         entry.setSize(b.length);
         tar.putArchiveEntry(entry);
@@ -133,6 +137,13 @@ public class NpmPackageVersionConverter {
     for (Entry<String, NpmPackageIndexBuilder> e : indexers.entrySet()) {
       byte[] cnt = e.getValue().build().getBytes(StandardCharsets.UTF_8);
       TarArchiveEntry entry = new TarArchiveEntry(e.getKey() + "/.index.json");
+      entry.setSize(cnt.length);
+      tar.putArchiveEntry(entry);
+      tar.write(cnt);
+      tar.closeArchiveEntry();
+      cnt = TextFile.fileToBytes(e.getValue().getDbFilename());
+      ManagedFileAccess.file(e.getValue().getDbFilename()).delete();
+      entry = new TarArchiveEntry(e.getKey() + "/.index.db");
       entry.setSize(cnt.length);
       tar.putArchiveEntry(entry);
       tar.write(cnt);
@@ -290,7 +301,6 @@ public class NpmPackageVersionConverter {
       }
       throw new Error("Unknown version " + currentVersion + " -> " + version);
     } catch (Exception ex) {
-      ex.printStackTrace();
       errors.add("Error converting " + n + ": " + ex.getMessage());
       return null;
     }
@@ -325,6 +335,7 @@ public class NpmPackageVersionConverter {
       ig.setPackageId(packageId);
     }
   }
+
 
   private void convertResourceR5(Resource res) {
     if (res instanceof ImplementationGuide) {

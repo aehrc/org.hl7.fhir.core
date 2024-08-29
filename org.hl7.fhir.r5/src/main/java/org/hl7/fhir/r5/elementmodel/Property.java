@@ -38,15 +38,17 @@ import org.hl7.fhir.exceptions.DefinitionException;
 import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.r5.conformance.profile.ProfileUtilities;
 import org.hl7.fhir.r5.conformance.profile.ProfileUtilities.SourcedChildDefinitions;
+import org.hl7.fhir.r5.context.ContextUtilities;
 import org.hl7.fhir.r5.context.IWorkerContext;
+import org.hl7.fhir.r5.fhirpath.TypeDetails;
 import org.hl7.fhir.r5.formats.FormatUtilities;
+import org.hl7.fhir.r5.model.Constants;
 import org.hl7.fhir.r5.model.ElementDefinition;
 import org.hl7.fhir.r5.model.ElementDefinition.PropertyRepresentation;
 import org.hl7.fhir.r5.model.ElementDefinition.TypeRefComponent;
 import org.hl7.fhir.r5.model.Extension;
 import org.hl7.fhir.r5.model.StructureDefinition;
 import org.hl7.fhir.r5.model.StructureDefinition.StructureDefinitionKind;
-import org.hl7.fhir.r5.model.TypeDetails;
 import org.hl7.fhir.r5.utils.ToolingExtensions;
 import org.hl7.fhir.r5.utils.TypesUtilities;
 import org.hl7.fhir.utilities.CommaSeparatedStringBuilder;
@@ -59,21 +61,24 @@ public class Property {
 	private ElementDefinition definition;
 	private StructureDefinition structure;
   private ProfileUtilities profileUtilities;
+  private ContextUtilities utils;
   private TypeRefComponent type;
 
-  public Property(IWorkerContext context, ElementDefinition definition, StructureDefinition structure, ProfileUtilities profileUtilities) {
+  public Property(IWorkerContext context, ElementDefinition definition, StructureDefinition structure, ProfileUtilities profileUtilities, ContextUtilities utils) {
 		this.context = context;
 		this.definition = definition;
 		this.structure = structure;
+		this.utils = utils;
     this.profileUtilities = profileUtilities;
 	}
 
 
-  public Property(IWorkerContext context, ElementDefinition definition, StructureDefinition structure, ProfileUtilities profileUtilities, String type) {
+  public Property(IWorkerContext context, ElementDefinition definition, StructureDefinition structure, ProfileUtilities profileUtilities, ContextUtilities utils, String type) {
     this.context = context;
     this.definition = definition;
     this.structure = structure;
     this.profileUtilities = profileUtilities;
+    this.utils = utils;
     for (TypeRefComponent tr : definition.getType()) {
       if (tr.getWorkingCode().equals(type)) {
         this.type = tr;
@@ -82,7 +87,7 @@ public class Property {
   }
   
 	public Property(IWorkerContext context, ElementDefinition definition, StructureDefinition structure) {
-    this(context, definition, structure, new ProfileUtilities(context, null, null));
+    this(context, definition, structure, new ProfileUtilities(context, null, null), new ContextUtilities(context));
 	}
 
 	public String getName() {
@@ -90,8 +95,8 @@ public class Property {
 	}
 
   public String getJsonName() {
-    if (definition.hasExtension(ToolingExtensions.EXT_JSON_NAME)) {
-      return ToolingExtensions.readStringExtension(definition, ToolingExtensions.EXT_JSON_NAME);
+    if (definition.hasExtension(ToolingExtensions.EXT_JSON_NAME, ToolingExtensions.EXT_JSON_NAME_DEPRECATED)) {
+      return ToolingExtensions.readStringExtension(definition, ToolingExtensions.EXT_JSON_NAME, ToolingExtensions.EXT_JSON_NAME_DEPRECATED);
     } else {
       return getName();
     }
@@ -100,16 +105,18 @@ public class Property {
   public String getXmlName() {
     if (definition.hasExtension(ToolingExtensions.EXT_XML_NAME)) {
       return ToolingExtensions.readStringExtension(definition, ToolingExtensions.EXT_XML_NAME);
+    } else if (definition.hasExtension(ToolingExtensions.EXT_XML_NAME_DEPRECATED)) {
+      return ToolingExtensions.readStringExtension(definition, ToolingExtensions.EXT_XML_NAME_DEPRECATED);
     } else {
       return getName();
     }
   }
 
   public String getXmlNamespace() {
-    if (ToolingExtensions.hasExtension(definition, "http://hl7.org/fhir/StructureDefinition/elementdefinition-namespace")) {
-      return ToolingExtensions.readStringExtension(definition, "http://hl7.org/fhir/StructureDefinition/elementdefinition-namespace");
-    } else if (ToolingExtensions.hasExtension(structure, "http://hl7.org/fhir/StructureDefinition/elementdefinition-namespace")) {
-      return ToolingExtensions.readStringExtension(structure, "http://hl7.org/fhir/StructureDefinition/elementdefinition-namespace");
+    if (ToolingExtensions.hasAnyOfExtensions(definition, ToolingExtensions.EXT_XML_NAMESPACE, ToolingExtensions.EXT_XML_NAMESPACE_DEPRECATED)) {
+      return ToolingExtensions.readStringExtension(definition, ToolingExtensions.EXT_XML_NAMESPACE, ToolingExtensions.EXT_XML_NAMESPACE_DEPRECATED);
+    } else if (ToolingExtensions.hasAnyOfExtensions(structure, ToolingExtensions.EXT_XML_NAMESPACE, ToolingExtensions.EXT_XML_NAMESPACE_DEPRECATED)) {
+      return ToolingExtensions.readStringExtension(structure, ToolingExtensions.EXT_XML_NAMESPACE, ToolingExtensions.EXT_XML_NAMESPACE_DEPRECATED);
     } else {
       return FormatUtilities.FHIR_NS;
     }
@@ -249,12 +256,7 @@ public class Property {
 	 * @param E.g. "integer"
 	 */
 	public boolean isPrimitive(String code) {
-	  if (Utilities.isAbsoluteUrl(code)) {
-	    StructureDefinition sd = context.fetchTypeDefinition(code);
-	    return sd != null && sd.getKind() == StructureDefinitionKind.PRIMITIVETYPE;
-	  } else {
-	    return TypesUtilities.isPrimitive(code);
-	  }
+	  return context.isPrimitiveType(code);
 	}
 
 	public boolean isPrimitive() {
@@ -267,10 +269,10 @@ public class Property {
 	public boolean isResource() {
 	  if (type != null) {
 	    String tc = type.getCode();
-      return (("Resource".equals(tc) || "DomainResource".equals(tc)) ||  Utilities.existsInList(tc, context.getResourceNames()));
+      return (("Resource".equals(tc) || "DomainResource".equals(tc)) || utils.isResource(tc));
 	  } else if (definition.getType().size() > 0) {
       String tc = definition.getType().get(0).getCode();
-      return definition.getType().size() == 1 && (("Resource".equals(tc) || "DomainResource".equals(tc)) ||  Utilities.existsInList(tc, context.getResourceNames()));
+      return definition.getType().size() == 1 && (("Resource".equals(tc) || "DomainResource".equals(tc)) ||  utils.isResource(tc));
     }
 	  else {
 	    return !definition.getPath().contains(".") && (structure.getKind() == StructureDefinitionKind.RESOURCE);
@@ -341,14 +343,20 @@ public class Property {
 
 
   public List<Property> getChildProperties(String elementName, String statedType) throws FHIRException {
+    String cacheKey = structure.getVUrl()+"#"+definition.getPath()+":"+elementName+"/"+statedType;
+    List<Property> cached = profileUtilities.getCachedPropertyList().get(cacheKey);
+    if (cached != null) {
+      return cached;
+    }
     ElementDefinition ed = definition;
     StructureDefinition sd = structure;
+    boolean isCDA = isCDAElement(structure);
     SourcedChildDefinitions children = profileUtilities.getChildMap(sd, ed);
     String url = null;
     if (children.getList().isEmpty() || isElementWithOnlyExtension(ed, children.getList())) {
       // ok, find the right definitions
       String t = null;
-      if (ed.getType().size() == 1)
+      if (ed.getType().size() == 1 && (statedType == null || !isCDA))
         t = ed.getType().get(0).getWorkingCode();
       else if (ed.getType().size() == 0)
         throw new Error("types == 0, and no children found on "+getDefinition().getPath());
@@ -361,9 +369,9 @@ public class Property {
             break;
           }
         }
-        if (!all) {
+        if (!all || (isCDA && statedType != null)) {
           // ok, it's polymorphic
-          if (ed.hasRepresentation(PropertyRepresentation.TYPEATTR)) {
+          if (ed.hasRepresentation(PropertyRepresentation.TYPEATTR) || isCDA) {
             t = statedType;
             if (t == null && ToolingExtensions.hasExtension(ed, "http://hl7.org/fhir/StructureDefinition/elementdefinition-defaulttype"))
               t = ToolingExtensions.readStringExtension(ed, "http://hl7.org/fhir/StructureDefinition/elementdefinition-defaulttype");
@@ -377,13 +385,21 @@ public class Property {
                   url = tr.getWorkingCode();
                   ok = true;
                 }
+                if (!ok) {
+                  sdt = findAncestor(t, sdt);
+                  if (sdt != null) {
+                    url = sdt.getUrl();
+                    ok = true;
+                  }
+                }
               }
-              if (ok)
+              if (ok) {
                 break;
+              }
             }
-             if (!ok)
-               throw new DefinitionException("Type '"+t+"' is not an acceptable type for '"+elementName+"' on property "+definition.getPath());
-            
+            if (!ok) {
+              throw new DefinitionException("Type '"+t+"' is not an acceptable type for '"+elementName+"' on property "+definition.getPath());
+            }
           } else {
             t = elementName.substring(tail(ed.getPath()).length() - 3);
             if (isPrimitive(lowFirst(t)))
@@ -413,10 +429,31 @@ public class Property {
     }
     List<Property> properties = new ArrayList<Property>();
     for (ElementDefinition child : children.getList()) {
-      properties.add(new Property(context, child, sd, this.profileUtilities));
+      properties.add(new Property(context, child, sd, this.profileUtilities, this.utils));
     }
+    profileUtilities.getCachedPropertyList().put(cacheKey, properties);
     return properties;
   }
+
+  private StructureDefinition findAncestor(String type, StructureDefinition sdt) {
+    if (sdt != null) {
+      StructureDefinition sd = context.fetchTypeDefinition(type);
+      StructureDefinition t = sd;
+      while (t != null) {
+        if (t == sdt) {
+          return sd; 
+        }
+        t = context.fetchResource(StructureDefinition.class, t.getBaseDefinition());
+      }
+    }
+    return null;
+  }
+
+
+  private boolean isCDAElement(StructureDefinition sd) {
+    return sd.hasUrl() && sd.getUrl().startsWith(Constants.NS_CDA_ROOT);
+  }
+
 
   protected List<Property> getChildProperties(TypeDetails type) throws DefinitionException {
     ElementDefinition ed = definition;
@@ -452,7 +489,7 @@ public class Property {
     }
     List<Property> properties = new ArrayList<Property>();
     for (ElementDefinition child : children.getList()) {
-      properties.add(new Property(context, child, sd, this.profileUtilities));
+      properties.add(new Property(context, child, sd, this.profileUtilities, this.utils));
     }
     return properties;
   }
@@ -580,6 +617,9 @@ public class Property {
   public ProfileUtilities getUtils() {
     return profileUtilities;
   }
+  public ContextUtilities getContextUtils() {
+    return utils;
+  }
 
   public boolean isJsonPrimitiveChoice() {
     return ToolingExtensions.readBoolExtension(definition, ToolingExtensions.EXT_JSON_PRIMITIVE_CHOICE);
@@ -595,17 +635,74 @@ public class Property {
 
 
   public boolean hasJsonName() {
-    return definition.hasExtension(ToolingExtensions.EXT_JSON_NAME);
+    return definition.hasExtension(ToolingExtensions.EXT_JSON_NAME, ToolingExtensions.EXT_JSON_NAME_DEPRECATED);
   }
 
 
   public boolean isTranslatable() {
     boolean ok = ToolingExtensions.readBoolExtension(definition, ToolingExtensions.EXT_TRANSLATABLE);
-    if (!ok && !Utilities.existsInList(definition.getBase().getPath(), "Reference.reference", "Coding.version", "Identifier.value", "SampledData.offsets", "SampledData.data", "ContactPoint.value")) {
+    if (!ok && !definition.getPath().endsWith(".id") && !Utilities.existsInList(definition.getBase().getPath(), "Resource.id", "Reference.reference", "Coding.version", "Identifier.value", "SampledData.offsets", "SampledData.data", "ContactPoint.value")) {
       String t = getType();
       ok = Utilities.existsInList(t, "string", "markdown");
     }
+    if (Utilities.existsInList(pathForElement(getStructure().getType(), getDefinition().getBase().getPath()), "CanonicalResource.version")) {
+      return false;
+    }
     return ok;
+  }  
+
+
+  private String pathForElement(String type, String path) {
+    // special case support for metadata elements prior to R5:
+    if (utils.getCanonicalResourceNames().contains(type)) {
+      String fp = path.replace(type+".", "CanonicalResource.");
+      if (Utilities.existsInList(fp,
+         "CanonicalResource.url", "CanonicalResource.identifier", "CanonicalResource.version", "CanonicalResource.name", 
+         "CanonicalResource.title", "CanonicalResource.status", "CanonicalResource.experimental", "CanonicalResource.date",
+         "CanonicalResource.publisher", "CanonicalResource.contact", "CanonicalResource.description", "CanonicalResource.useContext", 
+         "CanonicalResource.jurisdiction"))  {
+        return fp;
+      }
+    }
+    return path; 
+  }
+  
+  public String getXmlTypeName() {
+    TypeRefComponent tr = type;
+    if (tr == null) {
+      tr = definition.getTypeFirstRep();
+    }
+    StructureDefinition sd = context.fetchTypeDefinition(tr.getWorkingCode());
+    return sd.getSnapshot().getElementFirstRep().getPath();
+  }
+
+
+  public boolean isReference() {
+    if (type != null) {
+      return isRef(type);
+    }
+    for (TypeRefComponent tr : definition.getType()) {
+      boolean ref = isRef(tr);
+      if (ref) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+
+  private boolean isRef(TypeRefComponent tr) {
+    return Utilities.existsInList(tr.getWorkingCode(), "Reference", "url", "uri", "canonical");
+  }
+
+
+  public boolean canBeType(String type) {
+    for (TypeRefComponent tr : getDefinition().getType()) {
+      if (type.equals(tr.getWorkingCode())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   

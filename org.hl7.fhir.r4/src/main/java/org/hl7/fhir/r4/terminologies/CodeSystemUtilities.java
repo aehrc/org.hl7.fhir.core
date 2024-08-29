@@ -52,6 +52,7 @@ import org.hl7.fhir.r4.model.Meta;
 import org.hl7.fhir.r4.model.Type;
 import org.hl7.fhir.r4.model.UriType;
 import org.hl7.fhir.r4.utils.ToolingExtensions;
+import org.hl7.fhir.r4.model.Coding;
 import org.hl7.fhir.utilities.StandardsStatus;
 import org.hl7.fhir.utilities.Utilities;
 
@@ -78,6 +79,11 @@ public class CodeSystemUtilities {
     defineCodeSystemProperty(cs, "notSelectable",
         "Indicates that the code is abstract - only intended to be used as a selector for other concepts",
         PropertyType.BOOLEAN);
+  }
+
+
+  public static Coding readCoding(String jurisdiction) {    
+    return jurisdiction == null || !jurisdiction.contains("#") ?  null : new Coding().setCode(jurisdiction.substring(jurisdiction.indexOf("#")+1)).setSystem(jurisdiction.substring(0, jurisdiction.indexOf("#")));
   }
 
   public enum ConceptStatus {
@@ -293,7 +299,7 @@ public class CodeSystemUtilities {
   }
 
   // see http://hl7.org/fhir/R4/codesystem.html#hierachy
-  // returns additional parents not in the heirarchy
+  // returns additional parents not in the hierarchy
   public static List<String> getOtherChildren(CodeSystem cs, ConceptDefinitionComponent c) {
     List<String> res = new ArrayList<String>();
     for (ConceptPropertyComponent p : c.getProperty()) {

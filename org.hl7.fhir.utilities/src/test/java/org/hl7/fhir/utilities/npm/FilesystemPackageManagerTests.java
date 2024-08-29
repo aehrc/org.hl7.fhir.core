@@ -2,12 +2,20 @@ package org.hl7.fhir.utilities.npm;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.annotation.Nonnull;
 
+import org.hl7.fhir.utilities.filesystem.ManagedFileAccess;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
 public class FilesystemPackageManagerTests {
 
@@ -49,7 +57,8 @@ public class FilesystemPackageManagerTests {
 
   @Nonnull
   private FilesystemPackageCacheManager getFilesystemPackageCacheManager(final boolean ignoreDefaultPackageServers) throws IOException {
-    return new FilesystemPackageCacheManager(FilesystemPackageCacheManager.FilesystemPackageCacheMode.TESTING) {
+
+    FilesystemPackageCacheManager.Builder builder = new FilesystemPackageCacheManager.Builder() {
       protected boolean isIgnoreDefaultPackageServers() {
         return ignoreDefaultPackageServers;
       }
@@ -63,5 +72,65 @@ public class FilesystemPackageManagerTests {
         return dummyPrivateServers;
       }
     };
+
+    return builder.build();
+
+  }
+
+  @Test
+  public void testUserCacheDirectory() throws IOException {
+    FilesystemPackageCacheManager filesystemPackageCacheManager = new FilesystemPackageCacheManager.Builder().build();
+    assertEquals(System.getProperty("user.home") + File.separator + ".fhir" + File.separator + "packages", filesystemPackageCacheManager.getFolder());
+  }
+
+  /*
+    Targeted folder will only be valid on -nix style systems.
+   */
+  @Test
+  @DisabledOnOs(OS.WINDOWS)
+  public void testSystemCacheDirectory() throws IOException {
+    File folder = new FilesystemPackageCacheManager.Builder().withSystemCacheFolder().getCacheFolder();
+
+    assertEquals( "/var/lib/.fhir/packages", folder.getAbsolutePath());
+  }
+
+  @Test
+  @EnabledOnOs(OS.WINDOWS)
+  public void testSystemCacheDirectoryWin() throws IOException {
+    File folder = new FilesystemPackageCacheManager.Builder().withSystemCacheFolder().getCacheFolder();
+    assertEquals( System.getenv("ProgramData") + "\\.fhir\\packages", folder.getAbsolutePath());
+  }
+
+  @Test
+  public void multithreadingTest() throws IOException {
+    String pcmPath = ManagedFileAccess.fromPath(Files.createTempDirectory("fpcm-multithreadingTest")).getAbsolutePath();
+    FilesystemPackageCacheManager pcm = new FilesystemPackageCacheManager.Builder().withCacheFolder(pcmPath).build();
+
+    final AtomicInteger totalSuccessful = new AtomicInteger();
+
+    List<Thread> threads = new ArrayList<>();
+    for (int i = 0; i < 3; i++) {
+      final int index = i;
+      Thread t = new Thread(() -> {
+        try {
+          pcm.loadPackage("hl7.fhir.xver-extensions#0.0.12");
+          totalSuccessful.incrementAndGet();
+          System.out.println("Thread " + index + " completed");
+        } catch (Exception e) {
+          e.printStackTrace();
+          System.err.println("Thread " + index + " failed");
+        }
+      });
+      t.start();
+      threads.add(t);
+    }
+    threads.forEach(t -> {
+      try {
+        t.join();
+      } catch (InterruptedException e) {
+
+      }
+    });
+    assertEquals(3, totalSuccessful.get());
   }
 }

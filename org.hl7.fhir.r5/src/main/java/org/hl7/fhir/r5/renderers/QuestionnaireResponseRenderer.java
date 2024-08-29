@@ -4,8 +4,9 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.util.List;
 
-import org.hl7.fhir.r5.model.Base;
-import org.hl7.fhir.r5.model.DataType;
+import org.hl7.fhir.exceptions.DefinitionException;
+import org.hl7.fhir.exceptions.FHIRException;
+import org.hl7.fhir.exceptions.FHIRFormatError;
 import org.hl7.fhir.r5.model.Expression;
 import org.hl7.fhir.r5.model.Questionnaire;
 import org.hl7.fhir.r5.model.QuestionnaireResponse;
@@ -13,11 +14,11 @@ import org.hl7.fhir.r5.model.QuestionnaireResponse.QuestionnaireResponseItemAnsw
 import org.hl7.fhir.r5.model.QuestionnaireResponse.QuestionnaireResponseItemComponent;
 import org.hl7.fhir.r5.model.Resource;
 import org.hl7.fhir.r5.model.StructureDefinition;
-import org.hl7.fhir.r5.renderers.utils.BaseWrappers.BaseWrapper;
-import org.hl7.fhir.r5.renderers.utils.BaseWrappers.ResourceWrapper;
 import org.hl7.fhir.r5.renderers.utils.RenderingContext;
 import org.hl7.fhir.r5.renderers.utils.RenderingContext.GenerationRules;
 import org.hl7.fhir.r5.renderers.utils.RenderingContext.KnownLinkType;
+import org.hl7.fhir.r5.renderers.utils.ResourceWrapper;
+import org.hl7.fhir.r5.utils.EOperationOutcome;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.xhtml.HierarchicalTableGenerator;
 import org.hl7.fhir.utilities.xhtml.HierarchicalTableGenerator.Cell;
@@ -29,40 +30,42 @@ import org.hl7.fhir.utilities.xhtml.XhtmlNode;
 
 public class QuestionnaireResponseRenderer extends ResourceRenderer {
 
-  public QuestionnaireResponseRenderer(RenderingContext context) {
-    super(context);
-  }
+  public QuestionnaireResponseRenderer(RenderingContext context) { 
+    super(context); 
+  } 
   
-  public boolean render(XhtmlNode x, Resource q) throws UnsupportedEncodingException, IOException {
-    return render(x, (QuestionnaireResponse) q);
+  @Override
+  public String buildSummary(ResourceWrapper r) throws UnsupportedEncodingException, IOException {
+    ResourceWrapper q = r.child("questionnaire");
+    String qd = q == null ? context.formatPhrase(RenderingContext.QUEST_UNSPECIFIED_QUESTIONNAIRE) : displayCanonical(q);
+    ResourceWrapper s = r.child("subject");
+    String sd = s == null ? context.formatPhrase(RenderingContext.QUEST_UNSPECIFIED_SUBJECT) : displayReference(s);
+    return context.formatPhrase(RenderingContext.QUEST_SUMMARY, qd, sd);
   }
-  
-  public boolean render(XhtmlNode x, QuestionnaireResponse q) throws UnsupportedEncodingException, IOException {
+
+  @Override
+  public void buildNarrative(RenderingStatus status, XhtmlNode x, ResourceWrapper qr) throws FHIRFormatError, DefinitionException, IOException, FHIRException, EOperationOutcome {
+    renderResourceTechDetails(qr, x);
+
     switch (context.getQuestionnaireMode()) {
-    case FORM:  return renderForm(x, q);
-    case LINKS: return renderLinks(x, q);
+    case FORM:
+      renderTree(status, x, qr);
+      break;
+    case LINKS: 
+      renderLinks(status, x, qr);
+      break;
 //    case LOGIC: return renderLogic(x, q);
 //    case DEFNS: return renderDefns(x, q);
-    case TREE:  return renderTree(x, q);
+    case TREE:  
+      renderTree(status, x, qr);
+      break;
     default:
-      throw new Error("Unknown QuestionnaireResponse Renderer Mode");
+      throw new Error(context.formatPhrase(RenderingContext.QUEST_UNKNOWN_MODE));
     }
   }
   
-  public boolean render(XhtmlNode x, ResourceWrapper qr) throws UnsupportedEncodingException, IOException {
-    switch (context.getQuestionnaireMode()) {
-    case FORM:  return renderTree(x, qr);
-    case LINKS: return renderLinks(x, qr);
-//    case LOGIC: return renderLogic(x, q);
-//    case DEFNS: return renderDefns(x, q);
-    case TREE:  return renderTree(x, qr);
-    default:
-      throw new Error("Unknown QuestionnaireResponse Renderer Mode");
-    }
-  }
-  
-  public boolean renderTree(XhtmlNode x, ResourceWrapper qr) throws UnsupportedEncodingException, IOException {
-    HierarchicalTableGenerator gen = new HierarchicalTableGenerator(context.getDestDir(), context.isInlineGraphics(), true);
+  public void renderTree(RenderingStatus status, XhtmlNode x, ResourceWrapper qr) throws UnsupportedEncodingException, IOException {
+    HierarchicalTableGenerator gen = new HierarchicalTableGenerator(context, context.getDestDir(), context.isInlineGraphics(), true, "");
     TableModel model = gen.new TableModel("qtree="+qr.getId(), false);    
     model.setAlternating(true);
     if (context.getRules() == GenerationRules.VALID_RESOURCE || context.isInlineGraphics()) {
@@ -71,141 +74,96 @@ public class QuestionnaireResponseRenderer extends ResourceRenderer {
       model.setDocoImg(Utilities.pathURL(context.getLink(KnownLinkType.SPEC), "help16.png"));
     }
     model.setDocoRef(context.getLink(KnownLinkType.SPEC)+"formats.html#table");
-    model.getTitles().add(gen.new Title(null, model.getDocoRef(), translate("sd.head", "LinkId"), translate("sd.hint", "The linkId for the item"), null, 0));
-    model.getTitles().add(gen.new Title(null, model.getDocoRef(), translate("sd.head", "Text"), translate("sd.hint", "Text for the item"), null, 0));
-    model.getTitles().add(gen.new Title(null, model.getDocoRef(), translate("sd.head", "Definition"), translate("sd.hint", "Minimum and Maximum # of times the the itemcan appear in the instance"), null, 0));
-    model.getTitles().add(gen.new Title(null, model.getDocoRef(), translate("sd.head", "Answer"), translate("sd.hint", "The type of the item"), null, 0));
+    model.getTitles().add(gen.new Title(null, model.getDocoRef(), context.formatPhrase(RenderingContext.QUEST_LINKID), context.formatPhrase(RenderingContext.QUEST_LINK), null, 0));
+    model.getTitles().add(gen.new Title(null, model.getDocoRef(), context.formatPhrase(RenderingContext.QUEST_TEXT), context.formatPhrase(RenderingContext.QUEST_TEXTFOR), null, 0));
+    model.getTitles().add(gen.new Title(null, model.getDocoRef(), context.formatPhrase(RenderingContext.GENERAL_DEFINITION), context.formatPhrase(RenderingContext.QUEST_TIMES), null, 0));
+    model.getTitles().add(gen.new Title(null, model.getDocoRef(), context.formatPhrase(RenderingContext.QUEST_ANSWER), context.formatPhrase(RenderingContext.QUEST_TYPE_ITEM), null, 0));
 
-    boolean hasExt = false;
     // first we add a root for the questionaire itself
     Row row = addTreeRoot(gen, model.getRows(), qr);
-    List<BaseWrapper> items = qr.children("item");
-    for (BaseWrapper i : items) {
-      hasExt = renderTreeItem(gen, row.getSubRows(), qr, i) || hasExt;
+    List<ResourceWrapper> items = qr.children("item");
+    for (ResourceWrapper i : items) {
+      renderTreeItem(status, gen, row.getSubRows(), qr, i);
     }
     XhtmlNode xn = gen.generate(model, context.getLocalPrefix(), 1, null);
     x.getChildNodes().add(xn);
-    return hasExt;
-  }
-
-  public boolean renderTree(XhtmlNode x, QuestionnaireResponse q) throws UnsupportedEncodingException, IOException {
-    HierarchicalTableGenerator gen = new HierarchicalTableGenerator(context.getDestDir(), context.isInlineGraphics(), true);
-    TableModel model = gen.new TableModel("qtree="+q.getId(), true);    
-    model.setAlternating(true);
-    if (context.getRules() == GenerationRules.VALID_RESOURCE || context.isInlineGraphics()) {
-      model.setDocoImg(HierarchicalTableGenerator.help16AsData());      
-    } else {
-      model.setDocoImg(Utilities.pathURL(context.getLink(KnownLinkType.SPEC), "help16.png"));
-    }
-    model.setDocoRef(context.getLink(KnownLinkType.SPEC)+"formats.html#table");
-    model.getTitles().add(gen.new Title(null, model.getDocoRef(), translate("sd.head", "LinkId"), translate("sd.hint", "The linkId for the item"), null, 0));
-    model.getTitles().add(gen.new Title(null, model.getDocoRef(), translate("sd.head", "Text"), translate("sd.hint", "Text for the item"), null, 0));
-    model.getTitles().add(gen.new Title(null, model.getDocoRef(), translate("sd.head", "Definition"), translate("sd.hint", "Minimum and Maximum # of times the the itemcan appear in the instance"), null, 0));
-    model.getTitles().add(gen.new Title(null, model.getDocoRef(), translate("sd.head", "Answer"), translate("sd.hint", "The type of the item"), null, 0));
-
-    boolean hasExt = false;
-    // first we add a root for the questionaire itself
-    Row row = addTreeRoot(gen, model.getRows(), q);
-    for (QuestionnaireResponseItemComponent i : q.getItem()) {
-      hasExt = renderTreeItem(gen, row.getSubRows(), q, i) || hasExt;
-    }
-    XhtmlNode xn = gen.generate(model, context.getLocalPrefix(), 1, null);
-    x.getChildNodes().add(xn);
-    return hasExt;
-  }
-
-
-
-  private Row addTreeRoot(HierarchicalTableGenerator gen, List<Row> rows, QuestionnaireResponse q) throws IOException {
-    Row r = gen.new Row();
-    rows.add(r);
-
-    r.setIcon("icon_q_root.gif", "QuestionnaireResponseRoot");
-    r.getCells().add(gen.new Cell(null, null, q.getId(), null, null));
-    r.getCells().add(gen.new Cell(null, null, "", null, null));
-    r.getCells().add(gen.new Cell(null, null, "QuestionnaireResponse", null, null));
-    r.getCells().add(gen.new Cell(null, null, "", null, null));
-    return r;    
   }
 
   private Row addTreeRoot(HierarchicalTableGenerator gen, List<Row> rows, ResourceWrapper qr) throws IOException {
     Row r = gen.new Row();
     rows.add(r);
 
-    Base b = qr.get("questionnaire");
+    ResourceWrapper b = qr.child("questionnaire");
     String ref = b == null ? null : b.primitiveValue();
     Questionnaire q = context.getContext().fetchResource(Questionnaire.class, ref);
     
-    r.setIcon("icon_q_root.gif", "QuestionnaireResponseRoot");
+    r.setIcon("icon_q_root.gif", context.formatPhrase(RenderingContext.QUEST_RESP_ROOT));
     r.getCells().add(gen.new Cell(null, null, qr.getId(), null, null));
     r.getCells().add(gen.new Cell(null, null, "", null, null));
     if (ref == null ) {
       r.getCells().add(gen.new Cell(null, null, "", null, null));
-      r.getCells().add(gen.new Cell("Questionnaire:", null, "None specified", null, null));
+      r.getCells().add(gen.new Cell(context.formatPhrase(RenderingContext.QUEST_QUESTION), null, context.formatPhrase(RenderingContext.QUEST_NONE_SPEC), null, null));
     } else if (q == null || !q.hasWebPath()) {
       r.getCells().add(gen.new Cell(null, null, "", null, null));
-      r.getCells().add(gen.new Cell("Questionnaire:", null, ref, null, null));
+      r.getCells().add(gen.new Cell(context.formatPhrase(RenderingContext.QUEST_QUESTION), null, ref, null, null));
     } else{
       r.getCells().add(gen.new Cell(null, null, "", null, null));
-      r.getCells().add(gen.new Cell("Questionnaire:", q.getWebPath(), q.present(), null, null));
+      r.getCells().add(gen.new Cell(context.formatPhrase(RenderingContext.QUEST_QUESTION), q.getWebPath(), q.present(), null, null));
     }
     return r;    
   }
 
-
-
-  private boolean renderTreeItem(HierarchicalTableGenerator gen, List<Row> rows, ResourceWrapper q, BaseWrapper i) throws IOException {
+  private boolean renderTreeItem(RenderingStatus status, HierarchicalTableGenerator gen, List<Row> rows, ResourceWrapper qr, ResourceWrapper i) throws IOException {
     Row r = gen.new Row();
     rows.add(r);
     boolean hasExt = false;
 
-    List<BaseWrapper> items = i.children("item");
-    List<BaseWrapper> answers = i.children("answer");
+    List<ResourceWrapper> items = i.children("item");
+    List<ResourceWrapper> answers = i.children("answer");
     boolean hasItem = items != null && !items.isEmpty();
     if (answers != null) {
-      for (BaseWrapper a : answers) {
+      for (ResourceWrapper a : answers) {
         hasItem = a.has("item");
       }
     }
     if (hasItem) {
-      r.setIcon("icon-q-group.png", "Group");
+      r.setIcon("icon-q-group.png", context.formatPhrase(RenderingContext.QUEST_GROUP));
     } else {
-      r.setIcon("icon-q-string.png", "Item");
+      r.setIcon("icon-q-string.png", context.formatPhrase(RenderingContext.QUEST_ITEM));
     }
-    String linkId = i.has("linkId") ? i.get("linkId").primitiveValue() : "??";
-    String text = i.has("text") ? i.get("text").primitiveValue() : "";
+    String linkId = i.has("linkId") ? i.primitiveValue("linkId") : "??";
+    String text = i.has("text") ? i.primitiveValue("text") : "";
     r.getCells().add(gen.new Cell(null, context.getDefinitionsTarget() == null ? "" : context.getDefinitionsTarget()+"#item."+linkId, linkId, null, null));
     r.getCells().add(gen.new Cell(null, null, text, null, null));
     r.getCells().add(gen.new Cell(null, null, null, null, null));
     if (answers == null ||  answers.size() == 0) {
       r.getCells().add(gen.new Cell(null, null, null, null, null));
       if (items != null) {
-        for (BaseWrapper si : items) {
-          renderTreeItem(gen, r.getSubRows(), q, si);
+        for (ResourceWrapper si : items) {
+          renderTreeItem(status, gen, r.getSubRows(), qr, si);
         }
       }
     } else if (answers.size() == 1) {
-      BaseWrapper ans = answers.get(0);
-      renderAnswer(gen, q, r, ans);
+      ResourceWrapper ans = answers.get(0);
+      renderAnswer(status, gen, qr, r, ans);
     } else {
       r.getCells().add(gen.new Cell(null, null, null, null, null));          
-      for (BaseWrapper ans : answers) {
+      for (ResourceWrapper ans : answers) {
         Row ar = gen.new Row();
         ar.setIcon("icon-q-string.png", "Item");
         ar.getSubRows().add(ar);
         ar.getCells().add(gen.new Cell(null, null, null, null, null));
         ar.getCells().add(gen.new Cell(null, null, text, null, null));
         ar.getCells().add(gen.new Cell(null, null, null, null, null));
-        renderAnswer(gen, q, ar, ans);
+        renderAnswer(status, gen, qr, ar, ans);
       }
     }
 
     return hasExt;    
   }
 
-  public void renderAnswer(HierarchicalTableGenerator gen, ResourceWrapper q, Row r, BaseWrapper ans) throws UnsupportedEncodingException, IOException {
-    List<BaseWrapper> items;
-    Base b = ans.get("value[x]");
+  public void renderAnswer(RenderingStatus status, HierarchicalTableGenerator gen, ResourceWrapper qr, Row r, ResourceWrapper ans) throws UnsupportedEncodingException, IOException {
+    ResourceWrapper b = ans.child("value[x]");
     if (b == null) {
       r.getCells().add(gen.new Cell(null, null, "null!", null, null));
     } else if (b.isPrimitive()) {
@@ -216,12 +174,11 @@ public class QuestionnaireResponseRenderer extends ResourceRenderer {
       Piece p = gen.new Piece("span");
       p.getChildren().add(x);
       cell.addPiece(p);
-      render(x, (DataType) b);
+      renderDataType(status, x, b);
       r.getCells().add(cell);
     }
-    items = ans.children("item");
-    for (BaseWrapper si : items) {
-      renderTreeItem(gen, r.getSubRows(), q, si);
+    for (ResourceWrapper si : ans.children("item")) {
+      renderTreeItem(status, gen, r.getSubRows(), qr, si);
     }
   }
   
@@ -235,9 +192,9 @@ public class QuestionnaireResponseRenderer extends ResourceRenderer {
       hasItem = a.hasItem();
     }
     if (hasItem) {
-      r.setIcon("icon-q-group.png", "Group");
+      r.setIcon("icon-q-group.png", context.formatPhrase(RenderingContext.QUEST_GROUP));
     } else {
-      r.setIcon("icon-q-string.png", "Item");
+      r.setIcon("icon-q-string.png", context.formatPhrase(RenderingContext.QUEST_ITEM));
     }
     r.getCells().add(gen.new Cell(null, context.getDefinitionsTarget() == null ? "" : context.getDefinitionsTarget()+"#item."+i.getLinkId(), i.getLinkId(), null, null));
     r.getCells().add(gen.new Cell(null, null, i.getText(), null, null));
@@ -280,7 +237,7 @@ public class QuestionnaireResponseRenderer extends ResourceRenderer {
     if (sd != null) {
       String url = sd.getWebPath();
       if (url != null) {
-        x.ah(url+"#"+path).tx(path);          
+        x.ah(context.prefixLocalHref(url+"#"+path)).tx(path);          
       } else {
         x.tx(i.getDefinition());
       }
@@ -292,7 +249,7 @@ public class QuestionnaireResponseRenderer extends ResourceRenderer {
   private void addExpression(Piece p, Expression exp, String label, String url) {
     XhtmlNode x = new XhtmlNode(NodeType.Element, "li").style("font-size: 11px");
     p.addHtml(x);
-    x.ah(url).tx(label);
+    x.ah(context.prefixLocalHref(url)).tx(label);
     x.tx(": ");
     x.code(exp.getExpression());
   }
@@ -327,7 +284,7 @@ public class QuestionnaireResponseRenderer extends ResourceRenderer {
   public boolean renderForm(XhtmlNode x, ResourceWrapper q) throws UnsupportedEncodingException, IOException {
     boolean hasExt = false;
     XhtmlNode d = x.div();
-    d.tx("todo");
+    d.tx(context.formatPhrase(RenderingContext.GENERAL_TODO));
 //    boolean hasPrefix = false;
 //    for (QuestionnaireItemComponent c : q.getItem()) {
 //      hasPrefix = hasPrefix || doesItemHavePrefix(c);
@@ -370,7 +327,7 @@ public class QuestionnaireResponseRenderer extends ResourceRenderer {
 //    }
 //    p.span(null, "linkId: "+i.getLinkId()).tx(i.getText());
 //    if (i.getRequired()) {
-//      p.span("color: red", "Mandatory").tx("*");
+//      p.span("color: red", context.formatPhrase(RenderingContext.QUEST_MAND)).tx("*");
 //    }
 //
 //    XhtmlNode input = null;
@@ -470,7 +427,7 @@ public class QuestionnaireResponseRenderer extends ResourceRenderer {
 //      CodeableConcept cc = i.getExtensionByUrl("http://hl7.org/fhir/StructureDefinition/QuestionnaireResponse-displayCategory").getValueCodeableConcept();
 //      String code = cc.getCode("http://hl7.org/fhir/QuestionnaireResponse-display-category");
 //      hasFlag = true;
-//      flags.ah(getSDCLink("http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-QuestionnaireResponse-displayCategory", "Category: "+code).img(Utilities.path(context.getLocalPrefix(), "icon-qi-"+code+".png"));
+//      flags.ah("https://hl7.org/fhir/R4/extension-questionnaire-displayCategory.html", "Category: "+code).img(Utilities.path(context.getLocalPrefix(), "icon-qi-"+code+".png"));
 //    }
 //
 //    if (i.hasMaxLength()) {
@@ -492,7 +449,7 @@ public class QuestionnaireResponseRenderer extends ResourceRenderer {
 //          ans.ah(vs.getWebPath()).tx(vs.present());                              
 //        }
 //      } else {
-//        ValueSet vs = context.getWorker().fetchResource(ValueSet.class, i.getAnswerValueSet());
+//        ValueSet vs = context.getWorker().findTxResource(ValueSet.class, i.getAnswerValueSet());
 //        if (vs == null  || !vs.hasWebPath()) {
 //          ans.tx(i.getAnswerValueSet());                    
 //        } else {
@@ -579,7 +536,7 @@ public class QuestionnaireResponseRenderer extends ResourceRenderer {
 //          vs.setUrl("urn:uuid:"+UUID.randomUUID().toString().toLowerCase());
 //        }
 //      } else {
-//        vs = context.getContext().fetchResource(ValueSet.class, i.getAnswerValueSet());
+//        vs = context.getContext().findTxResource(ValueSet.class, i.getAnswerValueSet());
 //      }
 //      if (vs != null) {
 //        ValueSetExpansionOutcome exp = context.getContext().expandVS(vs, true, false);
@@ -604,17 +561,10 @@ public class QuestionnaireResponseRenderer extends ResourceRenderer {
 //    return "QuestionnaireResponse "+q.present();
 //  }
 // 
-  private boolean renderLinks(XhtmlNode x, QuestionnaireResponse q) {
-    x.para().tx("Try this QuestionnaireResponse out:");
+  private boolean renderLinks(RenderingStatus status, XhtmlNode x, ResourceWrapper q) {
+    x.para().tx(context.formatPhrase(RenderingContext.QUEST_TRY_QUEST));
     XhtmlNode ul = x.ul();
-    ul.li().ah("http://todo.nlm.gov/path?mode=ig&src="+Utilities.pathURL(context.getLink(KnownLinkType.SELF), "package.tgz")+"&q="+q.getId()+".json").tx("NLM Forms Library");
-    return false;
-  }
-
-  private boolean renderLinks(XhtmlNode x, ResourceWrapper q) {
-    x.para().tx("Try this QuestionnaireResponse out:");
-    XhtmlNode ul = x.ul();
-    ul.li().ah("http://todo.nlm.gov/path?mode=ig&src="+Utilities.pathURL(context.getLink(KnownLinkType.SELF), "package.tgz")+"&q="+q.getId()+".json").tx("NLM Forms Library");
+    ul.li().ah("http://todo.nlm.gov/path?mode=ig&src="+Utilities.pathURL(context.getLink(KnownLinkType.SELF), "package.tgz")+"&q="+q.getId()+".json").tx(context.formatPhrase(RenderingContext.QUEST_NLM));
     return false;
   }
 
@@ -707,17 +657,17 @@ public class QuestionnaireResponseRenderer extends ResourceRenderer {
 //    // content control
 //    defn(tbl, "Max Length", qi.getMaxLength());
 //    if (qi.hasAnswerValueSet()) {
-//      defn(tbl, "Value Set", qi.getDefinition(), context.getWorker().fetchResource(ValueSet.class,  qi.getAnswerValueSet()));
+//      defn(tbl, "Value Set", qi.getDefinition(), context.getWorker().findTxResource(ValueSet.class,  qi.getAnswerValueSet()));
 //    }
 //    if (qi.hasAnswerOption()) {
 //      XhtmlNode tr = tbl.tr();
-//      tr.td().tx("Allowed Answers");
+//      tr.td().tx(context.formatPhrase(RenderingContext.QUEST_ALLOWED));
 //      XhtmlNode ul = tr.td().ul();
 //      for (QuestionnaireItemAnswerOptionComponent ans : qi.getAnswerOption()) {
 //        XhtmlNode li = ul.li();
 //        render(li, ans.getValue());
 //        if (ans.getInitialSelected()) {
-//          li.tx(" (initially selected)");
+//          li.tx(context.formatPhrase(RenderingContext.QUEST_INITIALLY));
 //        }
 //      }      
 //    }
@@ -738,11 +688,11 @@ public class QuestionnaireResponseRenderer extends ResourceRenderer {
 //    // appearance 
 //    if (qi.hasExtension(" http://hl7.org/fhir/StructureDefinition/QuestionnaireResponse-displayCategory")) {
 //      XhtmlNode tr = tbl.tr();
-//      tr.td().ah("http://hl7.org/fhir/StructureDefinition/QuestionnaireResponse-displayCategory").tx("Display Category");
+//      tr.td().ah("http://hl7.org/fhir/StructureDefinition/QuestionnaireResponse-displayCategory").tx(context.formatPhrase(RenderingContext.QUEST_DISPLAY_CAT));
 //      render(tr.td(), qi.getExtensionByUrl("http://hl7.org/fhir/StructureDefinition/QuestionnaireResponse-displayCategory").getValue());
 //    }
 //    if (ToolingExtensions.readBoolExtension(qi, "http://hl7.org/fhir/StructureDefinition/QuestionnaireResponse-hidden")) {
-//      defn(tbl, "Hidden Item", "http://hl7.org/fhir/StructureDefinition/QuestionnaireResponse-displayCategory", "This item is a hidden question", null);
+//      defn(tbl, "Hidden Item", "https://hl7.org/fhir/R4/extension-questionnaire-displayCategory.html", "This item is a hidden question", null);
 //    }
 //    if (ToolingExtensions.readBoolExtension(qi, "http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-QuestionnaireResponse-optionalDisplay")) {
 //      defn(tbl, "Hidden Item", "http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-QuestionnaireResponse-optionalDisplay", "This item is optional to display", null);
@@ -763,14 +713,14 @@ public class QuestionnaireResponseRenderer extends ResourceRenderer {
 //    }
 //    if (qi.hasExtension("http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-QuestionnaireResponse-observationLinkPeriod")) {
 //      XhtmlNode tr = tbl.tr();
-//      tr.td().ah(getSDCLink("http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-QuestionnaireResponse-observationLinkPeriod").tx("Observation Link Period");
+//      tr.td().ah(getSDCLink("http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-QuestionnaireResponse-observationLinkPeriod").tx(context.formatPhrase(RenderingContext.QUEST_OBSERVATION));
 //      render(tr.td(), qi.getExtensionByUrl("http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-QuestionnaireResponse-observationLinkPeriod").getValue());
 //    }
 //    
 //    // dynamic management
 //    if (qi.hasEnableWhen()) {
 //      XhtmlNode tr = tbl.tr();
-//      tr.td().tx("Enable When");
+//      tr.td().tx(context.formatPhrase(RenderingContext.QUEST_ENABLE));
 //      td = tr.td();
 //      if (qi.getEnableWhen().size() == 1) {
 //        renderEnableWhen(td, qi.getEnableWhen().get(0));
@@ -873,15 +823,5 @@ public class QuestionnaireResponseRenderer extends ResourceRenderer {
 //    }    
 //  }
 
-
-  @Override
-  public String display(Resource r) throws UnsupportedEncodingException, IOException {
-    return "todo";
-  }
-
-  @Override
-  public String display(ResourceWrapper r) throws UnsupportedEncodingException, IOException {
-    return "Not done yet";
-  }
 
 }

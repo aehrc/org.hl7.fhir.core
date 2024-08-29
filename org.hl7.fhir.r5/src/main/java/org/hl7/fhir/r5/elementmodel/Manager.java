@@ -41,16 +41,16 @@ import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.exceptions.FHIRFormatError;
 import org.hl7.fhir.r5.context.IWorkerContext;
 import org.hl7.fhir.r5.elementmodel.Manager.FhirFormat;
-import org.hl7.fhir.r5.elementmodel.ParserBase.NamedElement;
 import org.hl7.fhir.r5.formats.IParser.OutputStyle;
 import org.hl7.fhir.r5.model.StructureDefinition;
 
 public class Manager {
 
   //TODO use EnumMap
-  public enum FhirFormat { XML, JSON, TURTLE, TEXT, VBAR, SHC, FML, CSV;
+  public enum FhirFormat { XML, JSON, TURTLE, TEXT, VBAR, SHC, SHL, FML, NDJSON, CSV; 
     // SHC = smart health cards, including as text versions of QR codes
-
+    // SHL = smart health links, also a text version of the QR code
+    
     public String getExtension() {
       switch (this) {
         case JSON:
@@ -65,8 +65,12 @@ public class Manager {
           return "hl7";
         case SHC:
           return "shc";
+        case SHL:
+          return "shl";
         case FML:
           return "fml";
+        case NDJSON:
+          return "ndjson";
         case CSV:
           return "csv";
       }
@@ -87,14 +91,21 @@ public class Manager {
           return VBAR;
         case "shc":
           return SHC;
+        case "shl":
+          return SHL;
         case "fml":
           return FML;
+        case "ndjson":
+          return NDJSON;
         case "csv":
           return FML;
       }
       return null;
     }
     public static FhirFormat readFromMimeType(String mt) {
+      if (mt == null) {
+        return null;
+      }
       if (mt.contains("/xml") || mt.contains("+xml")) {
         return FhirFormat.XML;
       }
@@ -105,12 +116,12 @@ public class Manager {
     }
   }
   
-  public static List<NamedElement> parse(IWorkerContext context, InputStream source, FhirFormat inputFormat) throws FHIRFormatError, DefinitionException, IOException, FHIRException {
+  public static List<ValidatedFragment> parse(IWorkerContext context, InputStream source, FhirFormat inputFormat) throws FHIRFormatError, DefinitionException, IOException, FHIRException {
     return makeParser(context, inputFormat).parse(source);
   }
 
   public static Element parseSingle(IWorkerContext context, InputStream source, FhirFormat inputFormat) throws FHIRFormatError, DefinitionException, IOException, FHIRException {
-    return makeParser(context, inputFormat).parseSingle(source);
+    return makeParser(context, inputFormat).parseSingle(source, null);
   }
   
 
@@ -124,10 +135,12 @@ public class Manager {
     }
     switch (format) {
     case JSON : return new JsonParser(context);
+    case NDJSON : return new NDJsonParser(context);
     case XML : return new XmlParser(context);
     case TURTLE : return new TurtleParser(context);
     case VBAR : return new VerticalBarParser(context);
     case SHC : return new SHCParser(context);
+    case SHL : return new SHLParser(context);
     case FML : return new FmlParser(context);
     case CSV : return new CsvParser(context);
     case TEXT : throw new Error("Programming logic error: do not call makeParser for a text resource");

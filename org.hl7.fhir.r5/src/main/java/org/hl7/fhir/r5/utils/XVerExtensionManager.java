@@ -31,6 +31,8 @@ public class XVerExtensionManager {
 
   public static final String XVER_EXT_MARKER = "XVER_EXT_MARKER";
 
+  public static final String XVER_VER_MARKER = "XVER_VER_MARKER";
+
   private Map<String, JsonObject> lists = new HashMap<>();
   private IWorkerContext context;
 
@@ -44,7 +46,7 @@ public class XVerExtensionManager {
   }
   
   public XVerExtensionStatus status(String url) throws FHIRException {
-    if (url.length() < 24) {
+    if (url.length() < 54) {
       return XVerExtensionStatus.Invalid;
     }
     String v = url.substring(20, 23);
@@ -92,6 +94,7 @@ public class XVerExtensionManager {
     
     StructureDefinition sd = new StructureDefinition();
     sd.setUserData(XVER_EXT_MARKER, "true");
+    sd.setUserData(XVER_VER_MARKER, verSource);
     if (context.getResourceNamesAsSet().contains(r)) {
       sd.setWebPath(Utilities.pathURL(context.getSpecUrl(), r.toLowerCase()+"-definitions.html#"+e));
     } else {

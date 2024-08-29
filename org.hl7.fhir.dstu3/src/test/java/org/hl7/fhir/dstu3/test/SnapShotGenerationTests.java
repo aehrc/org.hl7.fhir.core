@@ -14,10 +14,14 @@ import org.apache.commons.codec.Charsets;
 import org.apache.commons.io.IOUtils;
 import org.hl7.fhir.dstu3.conformance.ProfileUtilities;
 import org.hl7.fhir.dstu3.context.SimpleWorkerContext;
+import org.hl7.fhir.dstu3.fhirpath.FHIRPathEngine;
+import org.hl7.fhir.dstu3.fhirpath.TypeDetails;
+import org.hl7.fhir.dstu3.fhirpath.ExpressionNode.CollectionStatus;
+import org.hl7.fhir.dstu3.fhirpath.FHIRPathEngine.IEvaluationContext;
+import org.hl7.fhir.dstu3.fhirpath.FHIRPathUtilityClasses.FunctionDetails;
 import org.hl7.fhir.dstu3.formats.IParser.OutputStyle;
 import org.hl7.fhir.dstu3.formats.XmlParser;
 import org.hl7.fhir.dstu3.model.Base;
-import org.hl7.fhir.dstu3.model.ExpressionNode.CollectionStatus;
 import org.hl7.fhir.dstu3.model.MetadataResource;
 import org.hl7.fhir.dstu3.model.Resource;
 import org.hl7.fhir.dstu3.model.StructureDefinition;
@@ -26,17 +30,14 @@ import org.hl7.fhir.dstu3.model.TestScript.SetupActionAssertComponent;
 import org.hl7.fhir.dstu3.model.TestScript.SetupActionOperationComponent;
 import org.hl7.fhir.dstu3.model.TestScript.TestScriptFixtureComponent;
 import org.hl7.fhir.dstu3.model.TestScript.TestScriptTestComponent;
-import org.hl7.fhir.dstu3.model.TypeDetails;
 import org.hl7.fhir.dstu3.test.support.TestingUtilities;
 import org.hl7.fhir.dstu3.utils.CodingUtilities;
-import org.hl7.fhir.dstu3.utils.FHIRPathEngine;
-import org.hl7.fhir.dstu3.utils.FHIRPathEngine.IEvaluationContext;
-import org.hl7.fhir.dstu3.utils.FHIRPathUtilityClasses.FunctionDetails;
 import org.hl7.fhir.exceptions.DefinitionException;
 import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.exceptions.FHIRFormatError;
 import org.hl7.fhir.exceptions.PathEngineException;
 import org.hl7.fhir.utilities.Utilities;
+import org.hl7.fhir.utilities.filesystem.ManagedFileAccess;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -89,7 +90,7 @@ public class SnapShotGenerationTests {
     context.fixtures.put(op.getResponseId(), output);
     context.snapshots.put(output.getUrl(), output);
 
-    new XmlParser().setOutputStyle(OutputStyle.PRETTY).compose(new FileOutputStream(Utilities.path(Utilities.path("[tmp]"), op.getResponseId() + ".xml")), output);
+    new XmlParser().setOutputStyle(OutputStyle.PRETTY).compose(ManagedFileAccess.outStream(Utilities.path(Utilities.path("[tmp]"), op.getResponseId() + ".xml")), output);
     //ok, now the asserts:
     for (int i = 1; i < test.getAction().size(); i++) {
       SetupActionAssertComponent a = test.getAction().get(i).getAssert();

@@ -8,6 +8,7 @@ import org.hl7.fhir.r5.context.IWorkerContext;
 import org.hl7.fhir.r5.model.OperationOutcome.IssueType;
 import org.hl7.fhir.r5.terminologies.utilities.TerminologyOperationContext.TerminologyServiceProtectionException;
 import org.hl7.fhir.utilities.i18n.I18nConstants;
+import org.hl7.fhir.utilities.validation.ValidationOptions;
 
 import java.util.ArrayList;
 
@@ -40,11 +41,13 @@ public class TerminologyOperationContext {
   private List<String> contexts = new ArrayList<>();
   private IWorkerContext worker;
   private boolean original;
+  private ValidationOptions options;
   
-  public TerminologyOperationContext(IWorkerContext worker) {
+  public TerminologyOperationContext(IWorkerContext worker, ValidationOptions options) {
     super();
     this.worker = worker;
     this.original = true;
+    this.options = options;
     
     if (EXPANSION_DEAD_TIME_SECS == 0 || debugging) {
       deadTime = 0;
@@ -53,12 +56,13 @@ public class TerminologyOperationContext {
     }
   }
   
-  private TerminologyOperationContext() {
+  private TerminologyOperationContext(ValidationOptions options) {
     super();
+    this.options = options;
   }
 
   public TerminologyOperationContext copy() {
-    TerminologyOperationContext ret = new TerminologyOperationContext();
+    TerminologyOperationContext ret = new TerminologyOperationContext(this.options);
     ret.worker = worker;
     ret.contexts.addAll(contexts);
     ret.deadTime = deadTime;
@@ -73,13 +77,17 @@ public class TerminologyOperationContext {
   
   public void seeContext(String context) {
     if (contexts.contains(context)) {
-      throw new TerminologyServiceProtectionException(worker.formatMessage(I18nConstants.VALUESET_CIRCULAR_REFERENCE, context, contexts.toString()), TerminologyServiceErrorClass.BUSINESS_RULE, IssueType.BUSINESSRULE);
+      throw new TerminologyServiceProtectionException(worker.formatMessage(I18nConstants.VALUESET_CIRCULAR_REFERENCE, context, contexts.toString()), TerminologyServiceErrorClass.PROCESSING, IssueType.PROCESSING);
     }
     contexts.add(context);
   }
 
   public boolean isOriginal() {
     return original;
+  }
+
+  public ValidationOptions getOptions() {
+    return options;
   }
 
   

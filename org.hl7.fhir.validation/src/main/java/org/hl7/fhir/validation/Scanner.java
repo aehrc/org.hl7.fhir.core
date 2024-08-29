@@ -23,18 +23,20 @@ import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.r5.context.ContextUtilities;
 import org.hl7.fhir.r5.context.SimpleWorkerContext;
 import org.hl7.fhir.r5.elementmodel.Element;
+import org.hl7.fhir.r5.fhirpath.FHIRPathEngine;
 import org.hl7.fhir.r5.model.ImplementationGuide;
 import org.hl7.fhir.r5.model.OperationOutcome;
 import org.hl7.fhir.r5.model.StructureDefinition;
 import org.hl7.fhir.r5.renderers.RendererFactory;
 import org.hl7.fhir.r5.renderers.utils.RenderingContext;
 import org.hl7.fhir.r5.renderers.utils.RenderingContext.GenerationRules;
+import org.hl7.fhir.r5.renderers.utils.ResourceWrapper;
 import org.hl7.fhir.r5.utils.EOperationOutcome;
-import org.hl7.fhir.r5.utils.FHIRPathEngine;
-import org.hl7.fhir.utilities.SimpleHTTPClient;
-import org.hl7.fhir.utilities.SimpleHTTPClient.HTTPResult;
 import org.hl7.fhir.utilities.TextFile;
 import org.hl7.fhir.utilities.Utilities;
+import org.hl7.fhir.utilities.filesystem.ManagedFileAccess;
+import org.hl7.fhir.utilities.http.HTTPResult;
+import org.hl7.fhir.utilities.http.ManagedWebAccess;
 import org.hl7.fhir.utilities.validation.ValidationMessage;
 import org.hl7.fhir.utilities.xhtml.XhtmlComposer;
 import org.hl7.fhir.validation.ValidatorUtils.SourceFile;
@@ -62,7 +64,7 @@ public class Scanner {
   public void validateScan(String output, List<String> sources) throws Exception {
     if (Utilities.noString(output))
       throw new Exception("Output parameter required when scanning");
-    if (!(new File(output).isDirectory()))
+    if (!(ManagedFileAccess.file(output).isDirectory()))
       throw new Exception("Output '" + output + "' must be a directory when scanning");
     System.out.println("  .. scan " + sources + " against loaded IGs");
     Set<String> urls = new HashSet<>();
@@ -259,7 +261,7 @@ public class Scanner {
   protected void genScanOutputItem(ScanOutputItem item, String filename) throws IOException, FHIRException, EOperationOutcome {
     RenderingContext rc = new RenderingContext(getContext(), null, null, "http://hl7.org/fhir", "", null, RenderingContext.ResourceRendererMode.END_USER, GenerationRules.VALID_RESOURCE);
     rc.setNoSlowLookup(true);
-    RendererFactory.factory(item.getOutcome(), rc).render(item.getOutcome());
+    RendererFactory.factory(item.getOutcome(), rc).renderResource(ResourceWrapper.forResource(rc.getContextUtilities(), item.getOutcome()));
     String s = new XhtmlComposer(XhtmlComposer.HTML).compose(item.getOutcome().getText().getDiv());
 
     String title = item.getTitle();
@@ -312,13 +314,12 @@ public class Scanner {
     OperationOutcome op = new OperationOutcome();
     op.addIssue().setCode(OperationOutcome.IssueType.EXCEPTION).setSeverity(OperationOutcome.IssueSeverity.FATAL).getDetails().setText(ex.getMessage());
     RenderingContext rc = new RenderingContext(getContext(), null, null, "http://hl7.org/fhir", "", null, RenderingContext.ResourceRendererMode.END_USER, GenerationRules.VALID_RESOURCE);
-    RendererFactory.factory(op, rc).render(op);
+    RendererFactory.factory(op, rc).renderResource(ResourceWrapper.forResource(rc.getContextUtilities(), op));
     return op;
   }
 
   protected void download(String address, String filename) throws IOException {
-    SimpleHTTPClient http = new SimpleHTTPClient();
-    HTTPResult res = http.get(address);
+    HTTPResult res = ManagedWebAccess.get(address);
     res.checkThrowException();
     TextFile.bytesToFile(res.getContent(), filename);
   }
@@ -334,17 +335,17 @@ public class Scanner {
   }
 
   protected void unzip(String zipFilePath, String destDirectory) throws IOException {
-    File destDir = new File(destDirectory);
+    File destDir = ManagedFileAccess.file(destDirectory);
     if (!destDir.exists()) {
       destDir.mkdir();
     }
-    ZipInputStream zipIn = new ZipInputStream(new FileInputStream(zipFilePath));
+    ZipInputStream zipIn = new ZipInputStream(ManagedFileAccess.inStream(zipFilePath));
     ZipEntry entry = zipIn.getNextEntry();
     // iterates over entries in the zip file
     while (entry != null) {
       String filePath = destDirectory + File.separator + entry.getName();
 
-      final File zipEntryFile = new File(destDirectory, entry.getName());
+      final File zipEntryFile = ManagedFileAccess.file(destDirectory, entry.getName());
       if (!zipEntryFile.toPath().normalize().startsWith(destDirectory)) {
         throw new RuntimeException("Entry with an illegal path: " + entry.getName());
       }
@@ -363,7 +364,7 @@ public class Scanner {
   }
 
   protected void extractFile(ZipInputStream zipIn, String filePath) throws IOException {
-    BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(filePath));
+    BufferedOutputStream bos = new BufferedOutputStream(ManagedFileAccess.outStream(filePath));
     byte[] bytesIn = new byte[BUFFER_SIZE];
     int read;
     while ((read = zipIn.read(bytesIn)) != -1) {

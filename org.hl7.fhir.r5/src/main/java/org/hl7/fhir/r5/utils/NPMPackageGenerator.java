@@ -52,6 +52,7 @@ import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
 import org.hl7.fhir.exceptions.FHIRException;
+import org.hl7.fhir.r5.model.Coding;
 import org.hl7.fhir.r5.model.ContactDetail;
 import org.hl7.fhir.r5.model.ContactPoint;
 import org.hl7.fhir.r5.model.ContactPoint.ContactPointSystem;
@@ -62,6 +63,7 @@ import org.hl7.fhir.r5.model.ImplementationGuide.ImplementationGuideDependsOnCom
 import org.hl7.fhir.utilities.CommaSeparatedStringBuilder;
 import org.hl7.fhir.utilities.TextFile;
 import org.hl7.fhir.utilities.Utilities;
+import org.hl7.fhir.utilities.filesystem.ManagedFileAccess;
 import org.hl7.fhir.utilities.json.model.JsonArray;
 import org.hl7.fhir.utilities.json.model.JsonObject;
 import org.hl7.fhir.utilities.json.model.JsonString;
@@ -73,7 +75,7 @@ import org.hl7.fhir.utilities.npm.ToolsVersion;
 public class NPMPackageGenerator {
 
   public enum Category {
-    RESOURCE, EXAMPLE, OPENAPI, SCHEMATRON, RDF, OTHER, TOOL, TEMPLATE, JEKYLL;
+    RESOURCE, EXAMPLE, OPENAPI, SCHEMATRON, RDF, OTHER, TOOL, TEMPLATE, JEKYLL, TEST;
 
     private String getDirectory() {
       switch (this) {
@@ -85,6 +87,7 @@ public class NPMPackageGenerator {
       case OTHER: return "package/other/";      
       case TEMPLATE: return "package/other/";      
       case JEKYLL: return "package/jekyll/";      
+      case TEST: return "package/tests/"; 
       case TOOL: return "package/bin/";      
       }
       return "/";
@@ -101,6 +104,7 @@ public class NPMPackageGenerator {
   private JsonObject packageManifest;
   private NpmPackageIndexBuilder indexer;
   private String igVersion;
+  private String indexdb;
 
 
   public NPMPackageGenerator(String destFile, String canonical, String url, PackageType kind, ImplementationGuide ig, Date date, boolean notForPublication) throws FHIRException, IOException {
@@ -245,6 +249,10 @@ public class NPMPackageGenerator {
     npm.add("directories", dir);
     dir.add("lib", "package");
     dir.add("example", "example");
+    if (ig.hasJurisdiction() && ig.getJurisdiction().size() == 1 && ig.getJurisdictionFirstRep().getCoding().size() == 1) {
+      Coding c = ig.getJurisdictionFirstRep().getCodingFirstRep();
+      npm.add("jurisdiction", c.getSystem()+"#"+c.getCode());
+    }
     String json = JsonParser.compose(npm, true);
     try {
       addFile(Category.RESOURCE, "package.json", json.getBytes("UTF-8"));
@@ -261,7 +269,10 @@ public class NPMPackageGenerator {
     packageManifest.add("fhirVersion", fv);
     packageManifest.add("date", dt);
     packageManifest.add("name", ig.getPackageId());
-
+    if (ig.hasJurisdiction() && ig.getJurisdiction().size() == 1 && ig.getJurisdictionFirstRep().getCoding().size() == 1) {
+      Coding c = ig.getJurisdictionFirstRep().getCodingFirstRep();
+      packageManifest.add("jurisdiction", c.getSystem()+"#"+c.getCode());
+    }
   }
 
 
@@ -315,8 +326,9 @@ public class NPMPackageGenerator {
     bufferedOutputStream = new BufferedOutputStream(OutputStream);
     gzipOutputStream = new GzipCompressorOutputStream(bufferedOutputStream);
     tar = new TarArchiveOutputStream(gzipOutputStream);
+    indexdb = Utilities.path("[tmp]", "tmp-"+UUID.randomUUID().toString()+".db");
     indexer = new NpmPackageIndexBuilder();
-    indexer.start();
+    indexer.start(indexdb);
   }
 
 
@@ -377,12 +389,15 @@ public class NPMPackageGenerator {
     TextFile.bytesToFile(OutputStream.toByteArray(), destFile);
     // also, for cache management on current builds, generate a little manifest
     String json = JsonParser.compose(packageManifest, true);
-    TextFile.stringToFile(json, Utilities.changeFileExt(destFile, ".manifest.json"), false);
+    TextFile.stringToFile(json, Utilities.changeFileExt(destFile, ".manifest.json"));
   }
 
   private void buildIndexJson() throws IOException {
-    byte[] content = TextFile.stringToBytes(indexer.build(), false);
+    byte[] content = TextFile.stringToBytes(indexer.build());
     addFile(Category.RESOURCE, ".index.json", content); 
+    content = TextFile.fileToBytes(indexdb);
+    ManagedFileAccess.file(indexdb).delete();
+    addFile(Category.RESOURCE, ".index.db", content); 
   }
 
   public String filename() {
@@ -390,7 +405,7 @@ public class NPMPackageGenerator {
   }
 
   public void loadDir(String rootDir, String name) throws IOException {
-    loadFiles(rootDir, new File(Utilities.path(rootDir, name)));
+    loadFiles(rootDir, ManagedFileAccess.file(Utilities.path(rootDir, name)));
   }
 
   public void loadFiles(String root, File dir, String... noload) throws IOException {

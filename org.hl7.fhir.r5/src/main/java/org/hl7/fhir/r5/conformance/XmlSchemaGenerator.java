@@ -80,6 +80,7 @@ import org.hl7.fhir.r5.model.StructureDefinition;
 import org.hl7.fhir.r5.utils.ToolingExtensions;
 import org.hl7.fhir.utilities.CommaSeparatedStringBuilder;
 import org.hl7.fhir.utilities.Utilities;
+import org.hl7.fhir.utilities.filesystem.ManagedFileAccess;
 
 
 public class XmlSchemaGenerator  {
@@ -209,7 +210,7 @@ public class XmlSchemaGenerator  {
     }
     close();
     
-    writer = new OutputStreamWriter(new FileOutputStream(Utilities.path(folder, tail(sd.getType()+".xsd"))), "UTF-8");
+    writer = new OutputStreamWriter(ManagedFileAccess.outStream(Utilities.path(folder, tail(sd.getType()+".xsd"))), "UTF-8");
     ln("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
     ln("<!-- ");
     ln(license);
@@ -239,8 +240,8 @@ public class XmlSchemaGenerator  {
 
   private String getNs(StructureDefinition sd) {
     String ns = "http://hl7.org/fhir";
-    if (sd.hasExtension(ToolingExtensions.EXT_XML_NAMESPACE))
-      ns = ToolingExtensions.readStringExtension(sd, ToolingExtensions.EXT_XML_NAMESPACE);
+    if (sd.hasExtension(ToolingExtensions.EXT_XML_NAMESPACE, ToolingExtensions.EXT_XML_NAMESPACE_DEPRECATED))
+      ns = ToolingExtensions.readStringExtension(sd, ToolingExtensions.EXT_XML_NAMESPACE, ToolingExtensions.EXT_XML_NAMESPACE_DEPRECATED);
     return ns;
   }
 

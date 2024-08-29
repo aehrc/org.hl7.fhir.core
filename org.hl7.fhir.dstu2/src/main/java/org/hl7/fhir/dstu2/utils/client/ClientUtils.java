@@ -81,7 +81,7 @@ import org.hl7.fhir.dstu2.model.Resource;
 import org.hl7.fhir.dstu2.model.ResourceType;
 import org.hl7.fhir.dstu2.utils.ResourceUtilities;
 import org.hl7.fhir.exceptions.FHIRException;
-
+import org.hl7.fhir.utilities.MimeType;
 import org.hl7.fhir.utilities.ToolingClientLogger;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.settings.FhirSettings;
@@ -106,6 +106,7 @@ public class ClientUtils {
   private int retryCount;
   private String userAgent;
   private String acceptLang;
+  private String contentLang;
 
   public HttpHost getProxy() {
     return proxy;
@@ -298,12 +299,14 @@ public class ClientUtils {
     if (!Utilities.noString(acceptLang)) {
       request.addHeader("Accept-Language", acceptLang);
     }
+    if (!Utilities.noString(contentLang)) {
+      request.addHeader("Content-Language", acceptLang);
+    }
 
     if (format != null) {
       request.addHeader("Accept", format);
       request.addHeader("Content-Type", format + ";charset=" + DEFAULT_CHARSET);
     }
-    request.addHeader("Accept-Charset", DEFAULT_CHARSET);
     if (headers != null) {
       for (Header header : headers) {
         request.addHeader(header);
@@ -569,10 +572,11 @@ public class ClientUtils {
     if (StringUtils.isBlank(format)) {
       format = ResourceFormat.RESOURCE_XML.getHeader();
     }
-    if (format.equalsIgnoreCase("json") || format.equalsIgnoreCase(ResourceFormat.RESOURCE_JSON.getHeader())
+    MimeType mm = new MimeType(format);
+    if (mm.getBase().equalsIgnoreCase(ResourceFormat.RESOURCE_JSON.getHeader())
         || format.equalsIgnoreCase(ResourceFormat.RESOURCE_JSON.getHeader())) {
       return new JsonParser();
-    } else if (format.equalsIgnoreCase("xml") || format.equalsIgnoreCase(ResourceFormat.RESOURCE_XML.getHeader())
+    } else if (mm.getBase().equalsIgnoreCase(ResourceFormat.RESOURCE_XML.getHeader())
         || format.equalsIgnoreCase(ResourceFormat.RESOURCE_XML.getHeader())) {
       return new XmlParser();
     } else {
@@ -726,7 +730,10 @@ public class ClientUtils {
     this.userAgent = userAgent;
   }
 
-  public void setLanguage(String language) {
+  public void setAcceptLanguage(String language) {
     this.acceptLang = language;
+  }
+  public void setContentLanguage(String language) {
+    this.contentLang = language;
   }
 }

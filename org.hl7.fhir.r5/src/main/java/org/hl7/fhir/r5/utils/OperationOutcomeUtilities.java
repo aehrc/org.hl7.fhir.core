@@ -39,6 +39,9 @@ import org.hl7.fhir.r5.model.OperationOutcome;
 import org.hl7.fhir.r5.model.OperationOutcome.IssueSeverity;
 import org.hl7.fhir.r5.model.OperationOutcome.IssueType;
 import org.hl7.fhir.r5.model.OperationOutcome.OperationOutcomeIssueComponent;
+import org.hl7.fhir.r5.model.StringType;
+import org.hl7.fhir.r5.model.UrlType;
+import org.hl7.fhir.utilities.CommaSeparatedStringBuilder;
 import org.hl7.fhir.utilities.validation.ValidationMessage;
 
 public class OperationOutcomeUtilities {
@@ -54,10 +57,12 @@ public class OperationOutcomeUtilities {
       issue.addExpression(message.getLocation());
     }
     // pass through line/col if they're present
-    if (message.getLine() >= 0)
+    if (message.getLine() >= 0) {
       issue.addExtension().setUrl(ToolingExtensions.EXT_ISSUE_LINE).setValue(new IntegerType(message.getLine()));
-    if (message.getCol() >= 0)
+    }
+    if (message.getCol() >= 0) {
       issue.addExtension().setUrl(ToolingExtensions.EXT_ISSUE_COL).setValue(new IntegerType(message.getCol()));
+    }
     issue.setSeverity(convert(message.getLevel()));
     CodeableConcept c = new CodeableConcept();
     c.setText(message.getMessage());
@@ -72,20 +77,31 @@ public class OperationOutcomeUtilities {
     return issue;
   }
 
-  private static IssueSeverity convert(org.hl7.fhir.utilities.validation.ValidationMessage.IssueSeverity level) {
+  public static IssueSeverity convert(org.hl7.fhir.utilities.validation.ValidationMessage.IssueSeverity level) {
     switch (level) {
     case FATAL : return IssueSeverity.FATAL;
     case ERROR : return IssueSeverity.ERROR;
     case WARNING : return IssueSeverity.WARNING;
     case INFORMATION : return IssueSeverity.INFORMATION;
-	 case NULL : return IssueSeverity.NULL;
+   case NULL : return IssueSeverity.NULL;
     }
     return IssueSeverity.NULL;
   }
 
+  public static org.hl7.fhir.utilities.validation.ValidationMessage.IssueSeverity convert(IssueSeverity level) {
+    switch (level) {
+    case FATAL : return org.hl7.fhir.utilities.validation.ValidationMessage.IssueSeverity.FATAL;
+    case ERROR : return org.hl7.fhir.utilities.validation.ValidationMessage.IssueSeverity.ERROR;
+    case WARNING : return org.hl7.fhir.utilities.validation.ValidationMessage.IssueSeverity.WARNING;
+    case INFORMATION : return org.hl7.fhir.utilities.validation.ValidationMessage.IssueSeverity.INFORMATION;
+   case NULL : return org.hl7.fhir.utilities.validation.ValidationMessage.IssueSeverity.NULL;
+    }
+    return org.hl7.fhir.utilities.validation.ValidationMessage.IssueSeverity.NULL;
+  }
+
   private static IssueType convert(org.hl7.fhir.utilities.validation.ValidationMessage.IssueType type) {
     switch (type) {
-    case INVALID: 
+    case INVALID: return IssueType.INVALID; 
     case STRUCTURE: return IssueType.STRUCTURE;
     case REQUIRED: return IssueType.REQUIRED;
     case VALUE: return IssueType.VALUE;
@@ -147,6 +163,12 @@ public class OperationOutcomeUtilities {
     CodeableConcept c = new CodeableConcept();
     c.setText(message.getMessage());
     issue.setDetails(c);
+    if (message.sliceText != null) {
+      issue.addExtension(ToolingExtensions.EXT_ISSUE_SLICE_INFO, new StringType(CommaSeparatedStringBuilder.join("; ", message.sliceText)));
+    }
+    if (message.getServer() != null) {
+      issue.addExtension(ToolingExtensions.EXT_ISSUE_SERVER, new UrlType(message.getServer()));
+    }
     return issue;
   }
 

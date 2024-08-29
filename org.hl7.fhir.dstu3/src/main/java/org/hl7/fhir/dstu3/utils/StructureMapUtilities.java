@@ -50,6 +50,15 @@ import org.hl7.fhir.dstu3.context.IWorkerContext;
 import org.hl7.fhir.dstu3.context.IWorkerContext.ValidationResult;
 import org.hl7.fhir.dstu3.elementmodel.Element;
 import org.hl7.fhir.dstu3.elementmodel.Property;
+import org.hl7.fhir.dstu3.fhirpath.ExpressionNode;
+import org.hl7.fhir.dstu3.fhirpath.FHIRLexer;
+import org.hl7.fhir.dstu3.fhirpath.FHIRPathEngine;
+import org.hl7.fhir.dstu3.fhirpath.TypeDetails;
+import org.hl7.fhir.dstu3.fhirpath.ExpressionNode.CollectionStatus;
+import org.hl7.fhir.dstu3.fhirpath.FHIRLexer.FHIRLexerException;
+import org.hl7.fhir.dstu3.fhirpath.FHIRPathEngine.IEvaluationContext;
+import org.hl7.fhir.dstu3.fhirpath.FHIRPathUtilityClasses.FunctionDetails;
+import org.hl7.fhir.dstu3.fhirpath.TypeDetails.ProfiledType;
 import org.hl7.fhir.dstu3.model.Base;
 import org.hl7.fhir.dstu3.model.BooleanType;
 import org.hl7.fhir.dstu3.model.CodeType;
@@ -70,8 +79,6 @@ import org.hl7.fhir.dstu3.model.ElementDefinition.TypeRefComponent;
 import org.hl7.fhir.dstu3.model.Enumeration;
 import org.hl7.fhir.dstu3.model.Enumerations.ConceptMapEquivalence;
 import org.hl7.fhir.dstu3.model.Enumerations.PublicationStatus;
-import org.hl7.fhir.dstu3.model.ExpressionNode;
-import org.hl7.fhir.dstu3.model.ExpressionNode.CollectionStatus;
 import org.hl7.fhir.dstu3.model.IdType;
 import org.hl7.fhir.dstu3.model.IntegerType;
 import org.hl7.fhir.dstu3.model.Narrative.NarrativeStatus;
@@ -100,15 +107,10 @@ import org.hl7.fhir.dstu3.model.StructureMap.StructureMapStructureComponent;
 import org.hl7.fhir.dstu3.model.StructureMap.StructureMapTargetListMode;
 import org.hl7.fhir.dstu3.model.StructureMap.StructureMapTransform;
 import org.hl7.fhir.dstu3.model.Type;
-import org.hl7.fhir.dstu3.model.TypeDetails;
-import org.hl7.fhir.dstu3.model.TypeDetails.ProfiledType;
 import org.hl7.fhir.dstu3.model.UriType;
 import org.hl7.fhir.dstu3.model.ValueSet;
 import org.hl7.fhir.dstu3.model.ValueSet.ValueSetExpansionContainsComponent;
 import org.hl7.fhir.dstu3.terminologies.ValueSetExpander.ValueSetExpansionOutcome;
-import org.hl7.fhir.dstu3.utils.FHIRLexer.FHIRLexerException;
-import org.hl7.fhir.dstu3.utils.FHIRPathEngine.IEvaluationContext;
-import org.hl7.fhir.dstu3.utils.FHIRPathUtilityClasses.FunctionDetails;
 import org.hl7.fhir.exceptions.DefinitionException;
 import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.exceptions.FHIRFormatError;
@@ -160,7 +162,7 @@ public class StructureMapUtilities {
     public List<Base> performSearch(Object appContext, String url);
 	}
 
-	private class FFHIRPathHostServices implements IEvaluationContext{
+	private class FHIRPathHostServices implements IEvaluationContext{
 
     public Base resolveConstant(Object appContext, String name) throws PathEngineException {
       Variables vars = (Variables) appContext;
@@ -223,7 +225,7 @@ public class StructureMapUtilities {
 		this.services = services;
 		this.pkp = pkp;
 		fpe = new FHIRPathEngine(worker);
-		fpe.setHostServices(new FFHIRPathHostServices());
+		fpe.setHostServices(new FHIRPathHostServices());
 	}
 
 	public StructureMapUtilities(IWorkerContext worker, Map<String, StructureMap> library, ITransformerServices services) {
@@ -232,7 +234,7 @@ public class StructureMapUtilities {
 		this.library = library;
 		this.services = services;
 		fpe = new FHIRPathEngine(worker);
-    fpe.setHostServices(new FFHIRPathHostServices());
+    fpe.setHostServices(new FHIRPathHostServices());
 	}
 
   public StructureMapUtilities(IWorkerContext worker, Map<String, StructureMap> library) {
@@ -240,14 +242,14 @@ public class StructureMapUtilities {
     this.worker = worker;
     this.library = library;
     fpe = new FHIRPathEngine(worker);
-    fpe.setHostServices(new FFHIRPathHostServices());
+    fpe.setHostServices(new FHIRPathHostServices());
   }
 
   public StructureMapUtilities(IWorkerContext worker) {
     super();
     this.worker = worker;
     fpe = new FHIRPathEngine(worker);
-    fpe.setHostServices(new FFHIRPathHostServices());
+    fpe.setHostServices(new FHIRPathHostServices());
   }
 
   public StructureMapUtilities(IWorkerContext worker, ITransformerServices services) {
@@ -260,7 +262,7 @@ public class StructureMapUtilities {
     }
     this.services = services;
     fpe = new FHIRPathEngine(worker);
-    fpe.setHostServices(new FFHIRPathHostServices());
+    fpe.setHostServices(new FHIRPathHostServices());
   }
 
 	public static String render(StructureMap map) {

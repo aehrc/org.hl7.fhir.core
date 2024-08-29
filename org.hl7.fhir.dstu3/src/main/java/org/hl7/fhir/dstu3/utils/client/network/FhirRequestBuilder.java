@@ -20,6 +20,7 @@ import org.hl7.fhir.dstu3.utils.ResourceUtilities;
 import org.hl7.fhir.dstu3.utils.client.EFhirClientException;
 import org.hl7.fhir.dstu3.utils.client.ResourceFormat;
 import org.hl7.fhir.exceptions.FHIRException;
+import org.hl7.fhir.utilities.MimeType;
 import org.hl7.fhir.utilities.ToolingClientLogger;
 import org.hl7.fhir.utilities.settings.FhirSettings;
 
@@ -83,7 +84,6 @@ public class FhirRequestBuilder {
   /**
    * Adds necessary headers for all REST requests.
    * <li>User-Agent : hapi-fhir-tooling-client</li>
-   * <li>Accept-Charset : {@link FhirRequestBuilder#DEFAULT_CHARSET}</li>
    *
    * @param request {@link Request.Builder} to add default headers to.
    */
@@ -91,7 +91,6 @@ public class FhirRequestBuilder {
     if (headers == null || !headers.names().contains("User-Agent")) {
       request.addHeader("User-Agent", "hapi-fhir-tooling-client");
     }
-    request.addHeader("Accept-Charset", DEFAULT_CHARSET);
   }
 
   /**
@@ -326,9 +325,10 @@ public class FhirRequestBuilder {
     if (StringUtils.isBlank(format)) {
       format = ResourceFormat.RESOURCE_XML.getHeader();
     }
-    if (format.equalsIgnoreCase("json") || format.equalsIgnoreCase(ResourceFormat.RESOURCE_JSON.getHeader())) {
+    MimeType mt = new MimeType(format);
+    if (mt.getBase().equalsIgnoreCase(ResourceFormat.RESOURCE_JSON.getHeader())) {
       return new JsonParser();
-    } else if (format.equalsIgnoreCase("xml") || format.equalsIgnoreCase(ResourceFormat.RESOURCE_XML.getHeader())) {
+    } else if (mt.getBase().equalsIgnoreCase(ResourceFormat.RESOURCE_XML.getHeader())) {
       return new XmlParser();
     } else {
       throw new EFhirClientException("Invalid format: " + format);
@@ -370,7 +370,9 @@ public class FhirRequestBuilder {
       headerMap.keySet().forEach(key -> headerMap.get(key).forEach(value -> headerList.add(key + ":" + value)));
 
       try {
-        logger.logResponse(Integer.toString(responseCode), headerList, responseBody);
+        if (logger != null) {
+          logger.logResponse(Integer.toString(responseCode), headerList, responseBody);
+        }
       } catch (Exception e) {
         System.out.println("Error parsing response body passed in to logger ->\n" + e.getLocalizedMessage());
       }

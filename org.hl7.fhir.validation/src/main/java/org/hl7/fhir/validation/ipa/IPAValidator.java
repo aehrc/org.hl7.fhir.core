@@ -7,8 +7,8 @@ import java.util.Map;
 
 import org.hl7.fhir.r5.elementmodel.Element;
 import org.hl7.fhir.r5.elementmodel.JsonParser;
-import org.hl7.fhir.utilities.SimpleHTTPClient;
-import org.hl7.fhir.utilities.SimpleHTTPClient.HTTPResult;
+import org.hl7.fhir.utilities.http.HTTPResult;
+import org.hl7.fhir.utilities.http.ManagedWebAccess;
 import org.hl7.fhir.utilities.validation.ValidationMessage;
 import org.hl7.fhir.utilities.validation.ValidationMessage.IssueSeverity;
 import org.hl7.fhir.utilities.validation.ValidationMessage.IssueType;
@@ -122,7 +122,7 @@ public class IPAValidator {
       List<Element> entries = bundle.getChildren("entry");
       int i = 0;
       for (Element entry : entries) {
-        Element resource = entry.getNamedChild("resource");
+        Element resource = entry.getNamedChild("resource", false);
         if (resource != null && resource.fhirType().equals("Patient")) {
           validator.validate(this, vn.getIssues(), "Bundle.entry["+i+"].resource", resource, "http://hl7.org/fhir/uv/ipa/StructureDefinition/ipa-patient");        
           list.add(resource);
@@ -145,8 +145,8 @@ public class IPAValidator {
     // we check that there's a self link 
     Element sl = null;
     for (Element e : bundle.getChildren("link")) {
-      if ("self".equals(e.getNamedChildValue("relation"))) {
-        sl = e.getNamedChild("url");
+      if ("self".equals(e.getNamedChildValue("relation", false))) {
+        sl = e.getNamedChild("url", false);
       }
     }
     if (sl == null) {
@@ -160,8 +160,7 @@ public class IPAValidator {
 
   private Element makeRequest(ValidationNode vn, String url)  {
     try {
-      SimpleHTTPClient http = new SimpleHTTPClient();
-      HTTPResult result = http.get(url, "application/fhir+json");
+      HTTPResult result = ManagedWebAccess.get(url, "application/fhir+json");
       if (result.getCode() >= 300) {
         vn.getIssues().add(new ValidationMessage(Source.IPAValidator, IssueType.EXCEPTION, "http.request", 
             "HTTP Return code is "+result.getCode()+" "+result.getMessage(),

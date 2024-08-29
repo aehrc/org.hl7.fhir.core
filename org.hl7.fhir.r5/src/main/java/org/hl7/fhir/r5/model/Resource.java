@@ -34,6 +34,8 @@ package org.hl7.fhir.r5.model;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+
+import org.hl7.fhir.utilities.FhirPublication;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.r5.model.Enumerations.*;
 import org.hl7.fhir.instance.model.api.IBaseBackboneElement;
@@ -329,6 +331,21 @@ public abstract class Resource extends BaseResource implements IAnyResource {
         return value;
       }
 
+  @Override
+  public void removeChild(String name, Base value) throws FHIRException {
+        if (name.equals("id")) {
+          this.id = null;
+        } else if (name.equals("meta")) {
+          this.meta = null;
+        } else if (name.equals("implicitRules")) {
+          this.implicitRules = null;
+        } else if (name.equals("language")) {
+          this.language = null;
+        } else
+          super.removeChild(name, value);
+        
+      }
+
       @Override
       public Base makeProperty(int hash, String name) throws FHIRException {
         switch (hash) {
@@ -467,6 +484,11 @@ public abstract class Resource extends BaseResource implements IAnyResource {
     return getIdElement().getIdPart(); 
   } 
  
+
+  public FhirPublication getFHIRPublicationVersion() {
+    return FhirPublication.R5;
+  }
+  
 // end addition
 
 }

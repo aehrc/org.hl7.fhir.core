@@ -1,14 +1,17 @@
 package org.hl7.fhir.validation.cli.utils;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.Locale;
 
 import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.r5.terminologies.JurisdictionUtilities;
 import org.hl7.fhir.r5.utils.validation.BundleValidationRule;
+import org.hl7.fhir.r5.utils.validation.constants.BestPracticeWarningLevel;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.VersionUtilities;
+import org.hl7.fhir.utilities.filesystem.ManagedFileAccess;
 import org.hl7.fhir.validation.cli.model.CliContext;
 import org.hl7.fhir.validation.cli.model.HtmlInMarkdownCheck;
 import org.hl7.fhir.validation.cli.services.ValidatorWatchMode;
@@ -68,6 +71,8 @@ public class Params {
   public static final String LEFT = "-left";
   public static final String RIGHT = "-right";
   public static final String NO_INTERNAL_CACHING = "-no-internal-caching";
+
+  public static final String PRELOAD_CACHE = "-preload-cache";
   public static final String NO_EXTENSIBLE_BINDING_WARNINGS = "-no-extensible-binding-warnings";
   public static final String NO_UNICODE_BIDI_CONTROL_CHARS = "-no_unicode_bidi_control_chars";
   public static final String NO_INVARIANTS = "-no-invariants";
@@ -86,7 +91,10 @@ public class Params {
   public static final String SRC_LANG = "-src-lang";
   public static final String TGT_LANG = "-tgt-lang";
   public static final String ALLOW_DOUBLE_QUOTES = "-allow-double-quotes-in-fhirpath";
+  public static final String DISABLE_DEFAULT_RESOURCE_FETCHER = "-disable-default-resource-fetcher";
   public static final String CHECK_IPS_CODES = "-check-ips-codes";
+  public static final String BEST_PRACTICE = "-best-practice";
+  
   
 
   public static final String RUN_TESTS = "-run-tests";
@@ -143,7 +151,7 @@ public class Params {
         cliContext.setSv(VersionUtilities.getCurrentPackageVersion(args[++i]));
       } else if (args[i].equals(FHIR_SETTINGS_PARAM)) {
         final String fhirSettingsFilePath = args[++i];
-        if (! new File(fhirSettingsFilePath).exists()) {
+        if (! ManagedFileAccess.file(fhirSettingsFilePath).exists()) {
           throw new Error("Cannot find fhir-settings file: " + fhirSettingsFilePath);
         }
         cliContext.setFhirSettingsFile(fhirSettingsFilePath);
@@ -178,25 +186,25 @@ public class Params {
           cliContext.addProfile(p);
         }
       } else if (args[i].equals(BUNDLE)) {
-        String p = null;
-        String r = null;
+        String profile = null;
+        String rule = null;
         if (i + 1 == args.length) {
           throw new Error("Specified -profile without indicating bundle rule ");
         } else {
-          r = args[++i];
+          rule = args[++i];
         }
         if (i + 1 == args.length) {
           throw new Error("Specified -profile without indicating profile source");
         } else {
-          p = args[++i];
+          profile = args[++i];
         }
-        cliContext.getBundleValidationRules().add(new BundleValidationRule(r, p));
+        cliContext.getBundleValidationRules().add(new BundleValidationRule().setRule(rule).setProfile(profile));
       } else if (args[i].equals(QUESTIONNAIRE)) {
         if (i + 1 == args.length)
           throw new Error("Specified -questionnaire without indicating questionnaire mode");
         else {
-          String q = args[++i];
-          cliContext.setQuestionnaireMode(QuestionnaireMode.fromCode(q));
+          String questionnaireMode = args[++i];
+          cliContext.setQuestionnaireMode(QuestionnaireMode.fromCode(questionnaireMode));
         }
       } else if (args[i].equals(LEVEL)) {
         if (i + 1 == args.length)
@@ -244,6 +252,13 @@ public class Params {
             cliContext.setHtmlInMarkdownCheck(HtmlInMarkdownCheck.fromCode(q));
           }
         }
+      } else if (args[i].equals(BEST_PRACTICE)) {
+        if (i + 1 == args.length)
+          throw new Error("Specified "+BEST_PRACTICE+" without indicating mode");
+        else {
+          String q = args[++i];
+          cliContext.setBestPracticeLevel(readBestPractice(q));
+        }
       } else if (args[i].equals(LOCALE)) {
         if (i + 1 == args.length) {
           throw new Error("Specified -locale without indicating locale");
@@ -258,6 +273,8 @@ public class Params {
         cliContext.setNoExtensibleBindingMessages(true);
       } else if (args[i].equals(ALLOW_DOUBLE_QUOTES)) {
         cliContext.setAllowDoubleQuotesInFHIRPath(true);       
+      } else if (args[i].equals(DISABLE_DEFAULT_RESOURCE_FETCHER)) {
+        cliContext.setDisableDefaultResourceFetcher(true);
       } else if (args[i].equals(CHECK_IPS_CODES)) {
         cliContext.setCheckIPSCodes(true);       
       } else if (args[i].equals(NO_UNICODE_BIDI_CONTROL_CHARS)) {
@@ -323,8 +340,10 @@ public class Params {
       } else if (args[i].equals(TERMINOLOGY)) {
         if (i + 1 == args.length)
           throw new Error("Specified -tx without indicating terminology server");
-        else
+        else {
           cliContext.setTxServer("n/a".equals(args[++i]) ? null : args[i]);
+          cliContext.setNoEcosystem(true);
+        }
       } else if (args[i].equals(TERMINOLOGY_LOG)) {
         if (i + 1 == args.length)
           throw new Error("Specified -txLog without indicating file");
@@ -439,6 +458,23 @@ public class Params {
     return cliContext;
   }
 
+  private static BestPracticeWarningLevel readBestPractice(String s) {
+    if (s == null) {
+      return BestPracticeWarningLevel.Warning;
+    }
+    switch (s.toLowerCase()) {
+    case "warning" : return BestPracticeWarningLevel.Warning;
+    case "error" : return BestPracticeWarningLevel.Error;
+    case "hint" : return BestPracticeWarningLevel.Hint;
+    case "ignore" : return BestPracticeWarningLevel.Ignore;
+    case "w" : return BestPracticeWarningLevel.Warning;
+    case "e" : return BestPracticeWarningLevel.Error;
+    case "h" : return BestPracticeWarningLevel.Hint;
+    case "i" : return BestPracticeWarningLevel.Ignore;
+    }
+    throw new Error("The best-practice level ''"+s+"'' is not valid");
+  }
+
   private static int readInteger(String name, String value) {
     if (!Utilities.isInteger(value)) {
       throw new Error("Unable to read "+value+" provided for '"+name+"' - must be an integer");
@@ -474,11 +510,11 @@ public class Params {
     }
   }
 
-  public static String getTerminologyServerLog(String[] args) {
+  public static String getTerminologyServerLog(String[] args) throws IOException {
     String txLog = null;
     if (hasParam(args, "-txLog")) {
       txLog = getParam(args, "-txLog");
-      new File(txLog).delete();
+      ManagedFileAccess.file(txLog).delete();
     }
     return txLog;
   }

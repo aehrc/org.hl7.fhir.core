@@ -3,7 +3,9 @@ package org.hl7.fhir.r5.terminologies;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /*
   Copyright (c) 2011+, HL7, Inc.
@@ -58,15 +60,49 @@ import org.hl7.fhir.r5.model.DataType;
 import org.hl7.fhir.r5.model.ValueSet.ConceptReferenceComponent;
 import org.hl7.fhir.r5.model.ValueSet.ConceptSetComponent;
 import org.hl7.fhir.r5.model.ValueSet.ValueSetComposeComponent;
+import org.hl7.fhir.r5.model.ValueSet.ValueSetExpansionComponent;
 import org.hl7.fhir.r5.model.ValueSet.ValueSetExpansionContainsComponent;
 import org.hl7.fhir.r5.model.ValueSet.ValueSetExpansionPropertyComponent;
 import org.hl7.fhir.r5.terminologies.CodeSystemUtilities.ConceptDefinitionComponentSorter;
 import org.hl7.fhir.r5.terminologies.CodeSystemUtilities.ConceptStatus;
+import org.hl7.fhir.r5.utils.CanonicalResourceUtilities;
 import org.hl7.fhir.r5.utils.ToolingExtensions;
 import org.hl7.fhir.utilities.StandardsStatus;
 import org.hl7.fhir.utilities.Utilities;
+import org.hl7.fhir.utilities.VersionUtilities;
 
-public class ValueSetUtilities {
+public class ValueSetUtilities extends TerminologyUtilities {
+
+
+  public static class ValueSetSorter implements Comparator<ValueSet> {
+
+    @Override
+    public int compare(ValueSet o1, ValueSet o2) {
+      String url1 = o1.getUrl();
+      String url2 = o2.getUrl();
+      int c = compareString(url1, url2);
+      if (c == 0) {
+        String ver1 = o1.getVersion();
+        String ver2 = o2.getVersion();
+        c = VersionUtilities.compareVersions(ver1, ver2);
+        if (c == 0) {
+          String d1 = o1.getDateElement().asStringValue();
+          String d2 = o2.getDateElement().asStringValue();
+          c = compareString(url1, url2);
+        }
+      }
+      return c;
+    }
+
+    private int compareString(String s1, String s2) {
+      if (s1 == null) {
+        return s2 == null ? 0 : 1;
+      } else {
+        return s1.compareTo(s2);
+      }
+    }
+
+  }
 
 
   public static boolean isServerSide(String url) {
@@ -137,7 +173,7 @@ public class ValueSetUtilities {
     if (wg != null) {
       if (!ToolingExtensions.hasExtension(vs, ToolingExtensions.EXT_WORKGROUP) || 
           (!Utilities.existsInList(ToolingExtensions.readStringExtension(vs, ToolingExtensions.EXT_WORKGROUP), "fhir", "vocab") && Utilities.existsInList(wg, "fhir", "vocab"))) {
-        ToolingExtensions.setCodeExtension(vs, ToolingExtensions.EXT_WORKGROUP, wg);
+        CanonicalResourceUtilities.setHl7WG(vs, wg);
       }
     }
     if (status != null) {
@@ -336,26 +372,31 @@ public class ValueSetUtilities {
     return false;
   }
 
-  public static void addProperty(ValueSet vs, ValueSetExpansionContainsComponent ctxt, String url, String code, String value) {
+  public static org.hl7.fhir.r5.model.ValueSet.ConceptPropertyComponent addProperty(ValueSet vs, ValueSetExpansionContainsComponent ctxt, String url, String code, String value) {
     if (value != null) {
-      addProperty(vs, ctxt, url, code, new StringType(value));
+      return addProperty(vs, ctxt, url, code, new StringType(value));
+    } else {
+      return null;
     }
   }
 
-  public static void addProperty(ValueSet vs, ValueSetExpansionContainsComponent ctxt, String url, String code, Integer value) {
+  public static org.hl7.fhir.r5.model.ValueSet.ConceptPropertyComponent addProperty(ValueSet vs, ValueSetExpansionContainsComponent ctxt, String url, String code, Integer value) {
     if (value != null) {
-      addProperty(vs, ctxt, url, code, new IntegerType(value));
+      return addProperty(vs, ctxt, url, code, new IntegerType(value));
+    } else {
+      return null;
     }
   }
 
-  public static void addProperty(ValueSet vs, ValueSetExpansionContainsComponent ctxt, String url, String code, DataType value) {
+  public static org.hl7.fhir.r5.model.ValueSet.ConceptPropertyComponent addProperty(ValueSet vs, ValueSetExpansionContainsComponent ctxt, String url, String code, DataType value) {
     code = defineProperty(vs, url, code);
     org.hl7.fhir.r5.model.ValueSet.ConceptPropertyComponent p = getProperty(ctxt.getProperty(),  code);
-    if (p != null)
+    if (p != null) {
       p.setValue(value);
-    else
-      ctxt.addProperty().setCode(code).setValue(value);    
-
+    } else {
+      p = ctxt.addProperty().setCode(code).setValue(value);
+    }
+    return p;
   }
 
   private static org.hl7.fhir.r5.model.ValueSet.ConceptPropertyComponent getProperty(List<org.hl7.fhir.r5.model.ValueSet.ConceptPropertyComponent> list, String code) {
@@ -393,6 +434,14 @@ public class ValueSetUtilities {
     return i;
   }
 
+  public static int countExpansion(List<ValueSetExpansionContainsComponent> list) {
+    int i = list.size();
+    for (ValueSetExpansionContainsComponent t : list) {
+      i = i + countExpansion(t);
+    }
+    return i;
+  }
+
   private static int countExpansion(ValueSetExpansionContainsComponent c) {
     int i = c.getContains().size();
     for (ValueSetExpansionContainsComponent t : c.getContains()) {
@@ -401,5 +450,54 @@ public class ValueSetUtilities {
     return i;
   }
 
+  public static Set<String> listSystems(IWorkerContext ctxt, ValueSet vs) {
+    Set<String> systems = new HashSet<>();
+    for (ConceptSetComponent inc : vs.getCompose().getInclude()) {
+      for (CanonicalType ct : inc.getValueSet()) {
+        ValueSet vsr = ctxt.findTxResource(ValueSet.class, ct.asStringValue(), vs);
+        if (vsr != null) {
+          systems.addAll(listSystems(ctxt, vsr));
+        }
+      }
+      if (inc.hasSystem()) {
+        systems.add(inc.getSystem());
+      }
+    }
+    return systems;
+  }
+  
 
+  public static boolean isIncompleteExpansion(ValueSet valueSet) {
+    if (valueSet.hasExpansion()) {
+      ValueSetExpansionComponent exp = valueSet.getExpansion();
+      if (exp.hasTotal()) {
+        if (exp.getTotal() != countExpansion(exp.getContains())) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+
+  public static Set<String> codes(ValueSet vs, CodeSystem cs) {
+    Set<String> res = new HashSet<>();
+    for (ConceptSetComponent inc : vs.getCompose().getInclude()) {
+      if (inc.getSystem().equals(cs.getUrl())) {
+        addCodes(res, inc, cs.getConcept());
+      }
+    }
+    return res;
+  }
+
+  private static void addCodes(Set<String> res, ConceptSetComponent inc, List<ConceptDefinitionComponent> list) {
+    for (ConceptDefinitionComponent cd : list) {
+      if (cd.hasCode() && (!inc.hasConcept() || inc.hasConcept(cd.getCode()))) {
+        res.add(cd.getCode());
+      }
+      if (cd.hasConcept()) {
+        addCodes(res, inc, cd.getConcept());
+      }
+    }    
+  }
 }

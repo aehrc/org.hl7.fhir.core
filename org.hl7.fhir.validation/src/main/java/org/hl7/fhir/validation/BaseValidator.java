@@ -55,9 +55,11 @@ import org.hl7.fhir.r5.formats.IParser.OutputStyle;
 import org.hl7.fhir.r5.model.Base;
 import org.hl7.fhir.r5.model.CanonicalResource;
 import org.hl7.fhir.r5.model.Coding;
+import org.hl7.fhir.r5.model.Constants;
 import org.hl7.fhir.r5.model.DomainResource;
 import org.hl7.fhir.r5.model.Resource;
 import org.hl7.fhir.r5.model.StructureDefinition;
+import org.hl7.fhir.r5.model.UsageContext;
 import org.hl7.fhir.r5.model.ValueSet;
 import org.hl7.fhir.r5.model.Enumerations.PublicationStatus;
 import org.hl7.fhir.r5.model.OperationOutcome.OperationOutcomeIssueComponent;
@@ -65,42 +67,54 @@ import org.hl7.fhir.r5.terminologies.ValueSetUtilities;
 import org.hl7.fhir.r5.utils.ToolingExtensions;
 import org.hl7.fhir.r5.utils.XVerExtensionManager;
 import org.hl7.fhir.r5.utils.XVerExtensionManager.XVerExtensionStatus;
+import org.hl7.fhir.r5.utils.validation.IMessagingServices;
+import org.hl7.fhir.r5.utils.validation.IResourceValidator;
+import org.hl7.fhir.r5.utils.validation.IValidatorResourceFetcher;
 import org.hl7.fhir.r5.utils.validation.ValidationContextCarrier.IValidationContextResourceLoader;
+import org.hl7.fhir.r5.utils.validation.constants.BestPracticeWarningLevel;
+import org.hl7.fhir.utilities.CommaSeparatedStringBuilder;
 import org.hl7.fhir.utilities.FhirPublication;
 import org.hl7.fhir.utilities.StandardsStatus;
 import org.hl7.fhir.utilities.Utilities;
+import org.hl7.fhir.utilities.VersionUtilities;
 import org.hl7.fhir.utilities.i18n.I18nConstants;
 import org.hl7.fhir.utilities.validation.ValidationMessage;
+import org.hl7.fhir.utilities.validation.ValidationOptions;
 import org.hl7.fhir.utilities.validation.ValidationMessage.IssueSeverity;
 import org.hl7.fhir.utilities.validation.ValidationMessage.IssueType;
 import org.hl7.fhir.utilities.validation.ValidationMessage.Source;
+import org.hl7.fhir.utilities.xhtml.XhtmlNode;
 import org.hl7.fhir.validation.cli.utils.ValidationLevel;
 import org.hl7.fhir.validation.instance.utils.IndexedElement;
 import org.hl7.fhir.validation.instance.utils.NodeStack;
 
-public class BaseValidator implements IValidationContextResourceLoader {
+public class BaseValidator implements IValidationContextResourceLoader, IMessagingServices {
 
-  public class BooleanValue {
+  public static class BooleanHolder {
+    private boolean value = true;
 
-    private boolean value;
-
-    public BooleanValue(boolean value) {
+    public BooleanHolder() {
+      super();
+      this.value = true;
+    }
+    public BooleanHolder(boolean value) {
       super();
       this.value = value;
     }
-
-    public boolean isValue() {
+    public void fail() {
+      value = false;
+    }
+    public boolean ok() {
       return value;
     }
-
-    public void setValue(boolean value) {
-      this.value = value;
-    }
-
     public void see(boolean ok) {
       value = value && ok;
     }
+    public void set(boolean value) {
+      this.value = value;
+    }
   }
+  
 
   public class TrackedLocationRelatedMessage {
     private Object location;
@@ -154,7 +168,7 @@ public class BaseValidator implements IValidationContextResourceLoader {
   protected BaseValidator parent;
   protected Source source;
   protected IWorkerContext context;
-  protected TimeTracker timeTracker = new TimeTracker();
+  protected ValidationTimeTracker timeTracker = new ValidationTimeTracker();
   protected XVerExtensionManager xverManager;
   protected List<TrackedLocationRelatedMessage> trackedMessages = new ArrayList<>();
   protected List<ValidationMessage> messagesToRemove = new ArrayList<>();
@@ -164,7 +178,12 @@ public class BaseValidator implements IValidationContextResourceLoader {
   protected boolean forPublication;
   protected boolean debug;
   protected boolean warnOnDraftOrExperimental; 
-  protected Set<String> statusWarnings = new HashSet<>();
+  protected Set<String> statusWarnings = new HashSet<>();  
+  protected BestPracticeWarningLevel bpWarnings = BestPracticeWarningLevel.Warning;
+  protected String sessionId = Utilities.makeUuidLC();
+  protected List<UsageContext> usageContexts = new ArrayList<UsageContext>();
+  protected ValidationOptions baseOptions = new ValidationOptions(FhirPublication.R5);
+  protected IValidatorResourceFetcher fetcher;
 
   public BaseValidator(IWorkerContext context, XVerExtensionManager xverManager, boolean debug) {
     super();
@@ -174,6 +193,7 @@ public class BaseValidator implements IValidationContextResourceLoader {
       this.xverManager = new XVerExtensionManager(context);
     }
     this.debug = debug;
+    urlRegex = Constants.URI_REGEX_XVER.replace("$$", CommaSeparatedStringBuilder.join("|", context.getResourceNames()));
   }
   
   public BaseValidator(BaseValidator parent) {
@@ -192,6 +212,11 @@ public class BaseValidator implements IValidationContextResourceLoader {
     this.debug = parent.debug;
     this.warnOnDraftOrExperimental = parent.warnOnDraftOrExperimental;
     this.statusWarnings = parent.statusWarnings;
+    this.bpWarnings = parent.bpWarnings;
+    this.urlRegex = parent.urlRegex;
+    this.usageContexts.addAll(parent.usageContexts);
+    this.baseOptions = parent.baseOptions;
+    this.fetcher = parent.fetcher;
   }
   
   private boolean doingLevel(IssueSeverity error) {
@@ -233,6 +258,8 @@ public class BaseValidator implements IValidationContextResourceLoader {
    * offered when the validator is hosted in some other process
    */
   private Map<String, ValidationControl> validationControl = new HashMap<>();
+
+  protected String urlRegex;
 
     /**
    * Test a rule and add a {@link IssueSeverity#FATAL} validation message if the validation fails
@@ -323,10 +350,31 @@ public class BaseValidator implements IValidationContextResourceLoader {
     return thePass;
   }
 
+  /**
+   * Test a rule and add a {@link IssueSeverity#INFORMATION} validation message if the validation fails
+   * 
+   * @param thePass
+   *          Set this parameter to <code>false</code> if the validation does not pass
+   * @return Returns <code>thePass</code> (in other words, returns <code>true</code> if the rule did not fail validation)
+   */
+  protected boolean hintInv(List<ValidationMessage> errors, String ruleDate, IssueType type, int line, int col, String path, boolean thePass, String msg, String invId) {
+    if (!thePass && doingHints()) {
+      String message = context.formatMessage(msg);
+      addValidationMessage(errors, ruleDate, type, line, col, path, message, IssueSeverity.INFORMATION, msg).setInvId(invId);
+    }
+    return thePass;
+  }
+
   protected boolean hint(List<ValidationMessage> errors, String ruleDate, IssueType type, NodeStack stack, boolean thePass, String msg, Object... theMessageArguments) {
     return hint(errors, ruleDate, type, stack.line(), stack.col(), stack.getLiteralPath(),  thePass, msg, theMessageArguments);
   }
 
+  protected boolean slicingHint(List<ValidationMessage> errors, String ruleDate, IssueType type, int line, int col, String path, boolean thePass, boolean isCritical, String msg, String html, String[] text) {
+    if (!thePass && doingHints()) {
+      addValidationMessage(errors, ruleDate, type, line, col, path, msg, IssueSeverity.INFORMATION, null).setSlicingHint(true).setSliceHtml(html, text).setCriticalSignpost(isCritical);
+    }
+    return thePass;
+  }
   /**
    * Test a rule and add a {@link IssueSeverity#INFORMATION} validation message if the validation fails. And mark it as a slicing hint for later recovery if appropriate
    * 
@@ -334,10 +382,9 @@ public class BaseValidator implements IValidationContextResourceLoader {
    *          Set this parameter to <code>false</code> if the validation does not pass
    * @return Returns <code>thePass</code> (in other words, returns <code>true</code> if the rule did not fail validation)
    */
-  //FIXME: formatMessage should be done here
-  protected boolean slicingHint(List<ValidationMessage> errors, String ruleDate, IssueType type, int line, int col, String path, boolean thePass, boolean isCritical, String msg, String html, String[] text) {
+  protected boolean slicingHint(List<ValidationMessage> errors, String ruleDate, IssueType type, int line, int col, String path, boolean thePass, boolean isCritical, String msg, String html, String[] text, List<ValidationMessage> sliceInfo) {
     if (!thePass && doingHints()) {
-      addValidationMessage(errors, ruleDate, type, line, col, path, msg, IssueSeverity.INFORMATION, null).setSlicingHint(true).setSliceHtml(html, text).setCriticalSignpost(isCritical);
+      addValidationMessage(errors, ruleDate, type, line, col, path, msg, IssueSeverity.INFORMATION, null).setSlicingHint(true).setSliceHtml(html, text).setCriticalSignpost(isCritical).setSliceInfo(sliceInfo);
     }
     return thePass;
   }
@@ -365,7 +412,7 @@ public class BaseValidator implements IValidationContextResourceLoader {
     return thePass;
   }
 
-  protected ValidationMessage signpost(List<ValidationMessage> errors, String ruleDate, IssueType type, int line, int col, String path, String theMessage, Object... theMessageArguments) {
+  public ValidationMessage signpost(List<ValidationMessage> errors, String ruleDate, IssueType type, int line, int col, String path, String theMessage, Object... theMessageArguments) {
     String message = context.formatMessage(theMessage, theMessageArguments);
     return addValidationMessage(errors, ruleDate, type, line, col, path, message, IssueSeverity.INFORMATION, theMessage).setSignpost(true);
   }
@@ -424,6 +471,14 @@ public class BaseValidator implements IValidationContextResourceLoader {
     return thePass;
   }
 
+  protected boolean ruleInv(List<ValidationMessage> errors, String ruleDate, IssueType type, int line, int col, String path, boolean thePass, String theMessage, String invId, Object... theMessageArguments) {
+    if (!thePass && doingErrors()) {
+      String message = context.formatMessage(theMessage, theMessageArguments);
+      addValidationMessage(errors, ruleDate, type, line, col, path, message, IssueSeverity.ERROR, invId).setInvId(invId);
+    }
+    return thePass;
+  }
+
   protected boolean rule(List<ValidationMessage> errors, String ruleDate, IssueType type, NodeStack stack, boolean thePass, String theMessage, Object... theMessageArguments) {
     if (!thePass && doingErrors()) {
       String message = context.formatMessage(theMessage, theMessageArguments);
@@ -432,6 +487,10 @@ public class BaseValidator implements IValidationContextResourceLoader {
     return thePass;
   }
 
+  protected boolean rulePlural(List<ValidationMessage> errors, String ruleDate, IssueType type, NodeStack node, boolean thePass, int num, String theMessage, Object... theMessageArguments) {
+    return rulePlural(errors, ruleDate, type, node.line(), node.col(), node.getLiteralPath(), thePass, num, theMessage, theMessageArguments);
+  }
+  
   protected boolean rulePlural(List<ValidationMessage> errors, String ruleDate, IssueType type, int line, int col, String path, boolean thePass, int num, String theMessage, Object... theMessageArguments) {
     if (!thePass && doingErrors()) {
       String message = context.formatMessagePlural(num, theMessage, theMessageArguments);
@@ -443,13 +502,17 @@ public class BaseValidator implements IValidationContextResourceLoader {
   protected boolean txRule(List<ValidationMessage> errors, String ruleDate, String txLink, IssueType type, int line, int col, String path, boolean thePass, String theMessage, Object... theMessageArguments) {
     if (!thePass && doingErrors()) {
       String message = context.formatMessage(theMessage, theMessageArguments);
-      ValidationMessage vm = new ValidationMessage(Source.TerminologyEngine, type, line, col, path, message, IssueSeverity.ERROR).setMessageId(theMessage);
+      ValidationMessage vm = new ValidationMessage(Source.TerminologyEngine, type, line, col, path, message, IssueSeverity.ERROR).setMessageId(idForMessage(theMessage, message));
       vm.setRuleDate(ruleDate);
       if (checkMsgId(theMessage, vm)) {
         errors.add(vm.setTxLink(txLink));
       }
     }
     return thePass;
+  }
+
+  private String idForMessage(String theMessage, String message) {
+    return theMessage.equals(message) ? null : theMessage;
   }
 
   /**
@@ -575,9 +638,34 @@ public class BaseValidator implements IValidationContextResourceLoader {
     return thePass;
 
   }
+  
+  protected boolean warning(List<ValidationMessage> errors, String ruleDate, IssueType type, int line, int col, String path, String id, boolean thePass, String msg, Object... theMessageArguments) {
+    if (!thePass && doingWarnings()) {
+      String nmsg = context.formatMessage(msg, theMessageArguments);
+      IssueSeverity severity = IssueSeverity.WARNING;
+      addValidationMessage(errors, ruleDate, type, line, col, path, nmsg, severity, id);
+    }
+    return thePass;
+
+  }
+  
+  protected boolean warningInv(List<ValidationMessage> errors, String ruleDate, IssueType type, int line, int col, String path, boolean thePass, String msg, String invId, Object... theMessageArguments) {
+    if (!thePass && doingWarnings()) {
+      String nmsg = context.formatMessage(msg, theMessageArguments);
+      IssueSeverity severity = IssueSeverity.WARNING;
+      String id = idForMessage(msg, nmsg);
+      addValidationMessage(errors, ruleDate, type, line, col, path, nmsg, severity, id).setMessageId(id).setInvId(invId);
+    }
+    return thePass;
+
+  }
 
   protected boolean warning(List<ValidationMessage> errors, String ruleDate, IssueType type, NodeStack stack, boolean thePass, String msg, Object... theMessageArguments) {
-    return warning(errors, ruleDate, type, stack.line(), stack.col(), stack.getLiteralPath(), thePass, msg, theMessageArguments);
+    return warning(errors, ruleDate, type, stack, null, thePass, msg, theMessageArguments);
+  }
+  
+  protected boolean warning(List<ValidationMessage> errors, String ruleDate, IssueType type, NodeStack stack, String id, boolean thePass, String msg, Object... theMessageArguments) {
+    return warning(errors, ruleDate, type, stack.line(), stack.col(), stack.getLiteralPath(), id, thePass, msg, theMessageArguments);
   }
 
   protected boolean warningPlural(List<ValidationMessage> errors, String ruleDate, IssueType type, int line, int col, String path, boolean thePass, int num, String msg, Object... theMessageArguments) {
@@ -625,7 +713,7 @@ public class BaseValidator implements IValidationContextResourceLoader {
   protected boolean txWarning(List<ValidationMessage> errors, String ruleDate, String txLink, IssueType type, int line, int col, String path, boolean thePass, String msg, Object... theMessageArguments) {
     if (!thePass && doingWarnings()) {
       String nmsg = context.formatMessage(msg, theMessageArguments);
-      ValidationMessage vmsg = new ValidationMessage(Source.TerminologyEngine, type, line, col, path, nmsg, IssueSeverity.WARNING).setTxLink(txLink).setMessageId(msg);
+      ValidationMessage vmsg = new ValidationMessage(Source.TerminologyEngine, type, line, col, path, nmsg, IssueSeverity.WARNING).setTxLink(txLink).setMessageId(idForMessage(msg, nmsg));
       vmsg.setRuleDate(ruleDate);
       if (checkMsgId(msg, vmsg)) {
         errors.add(vmsg);
@@ -642,17 +730,28 @@ public class BaseValidator implements IValidationContextResourceLoader {
    *          Set this parameter to <code>false</code> if the validation does not pass
    * @return Returns <code>thePass</code> (in other words, returns <code>true</code> if the rule did not fail validation)
    */
-  protected void txIssue(List<ValidationMessage> errors, String ruleDate, String txLink, int line, int col, String path, OperationOutcomeIssueComponent issue) {
+  protected ValidationMessage txIssue(List<ValidationMessage> errors, String ruleDate, String txLink, int line, int col, String path, OperationOutcomeIssueComponent issue) {
+    if (issue.hasLocation() && issue.getExpressionOrLocation().get(0).getValue().contains(".")) {
+      path = path + dropHead(issue.getExpressionOrLocation().get(0).getValue());
+    }
     IssueType code = IssueType.fromCode(issue.getCode().toCode());
     IssueSeverity severity = IssueSeverity.fromCode(issue.getSeverity().toCode());
     ValidationMessage vmsg = new ValidationMessage(Source.TerminologyEngine, code, line, col, path, issue.getDetails().getText(), severity).setTxLink(txLink);
-//      if (checkMsgId(msg, vmsg)) {
+    if (issue.getExtensionString(ToolingExtensions.EXT_ISSUE_SERVER) != null) {
+      vmsg.setServer(issue.getExtensionString(ToolingExtensions.EXT_ISSUE_SERVER).replace("local.fhir.org", "tx-dev.fhir.org"));
+    }
+    if (issue.getExtensionString(ToolingExtensions.EXT_ISSUE_MSG_ID) != null) {
+      vmsg.setMessageId(issue.getExtensionString(ToolingExtensions.EXT_ISSUE_MSG_ID));
+    }
+    
     errors.add(vmsg);
-//      }
-//    }
-//    return thePass;
+    return vmsg;
   }
   
+  private String dropHead(String value) {
+    return value.contains(".") ? value.substring(value.indexOf(".")) : "";
+  }
+
   /**
    * Test a rule and add a {@link IssueSeverity#WARNING} validation message if the validation fails. Also, keep track of it later in case we want to remove it if we find a required binding for this element later
    * 
@@ -685,10 +784,30 @@ public class BaseValidator implements IValidationContextResourceLoader {
     trackedMessages.removeAll(messages);    
   }
   
+  protected boolean warningOrError(boolean isError, List<ValidationMessage> errors, String ruleDate, IssueType type, NodeStack stack, boolean thePass, String msg, Object... theMessageArguments) {
+    return warningOrError(isError, errors, ruleDate, type, stack.line(), stack.col(), stack.getLiteralPath(), thePass, msg, theMessageArguments);
+  }
+  
   protected boolean warningOrError(boolean isError, List<ValidationMessage> errors, String ruleDate, IssueType type, int line, int col, String path, boolean thePass, String msg, Object... theMessageArguments) {
     if (!thePass) {
       String nmsg = context.formatMessage(msg, theMessageArguments);
       IssueSeverity lvl = isError ? IssueSeverity.ERROR : IssueSeverity.WARNING;
+      if (doingLevel(lvl)) {
+        addValidationMessage(errors, ruleDate, type, line, col, path, nmsg, lvl, msg);
+      }
+    }
+    return thePass;
+
+  }
+
+  protected boolean hintOrError(boolean isError, List<ValidationMessage> errors, String ruleDate, IssueType type, NodeStack stack, boolean thePass, String msg, Object... theMessageArguments) {
+    return hintOrError(isError, errors, ruleDate, type, stack.line(), stack.col(), stack.getLiteralPath(), thePass, msg, theMessageArguments);
+  }
+  
+  protected boolean hintOrError(boolean isError, List<ValidationMessage> errors, String ruleDate, IssueType type, int line, int col, String path, boolean thePass, String msg, Object... theMessageArguments) {
+    if (!thePass) {
+      String nmsg = context.formatMessage(msg, theMessageArguments);
+      IssueSeverity lvl = isError ? IssueSeverity.ERROR : IssueSeverity.INFORMATION;
       if (doingLevel(lvl)) {
         addValidationMessage(errors, ruleDate, type, line, col, path, nmsg, lvl, msg);
       }
@@ -876,11 +995,11 @@ public class BaseValidator implements IValidationContextResourceLoader {
         return null;
       } else {
         long t = System.nanoTime();
-        ValueSet fr = context.fetchResource(ValueSet.class, reference, src);
+        ValueSet fr = context.findTxResource(ValueSet.class, reference, src);
         if (fr == null) {
           if (!Utilities.isAbsoluteUrl(reference)) {
             reference = resolve(uri, reference);
-            fr = context.fetchResource(ValueSet.class, reference, src);
+            fr = context.findTxResource(ValueSet.class, reference, src);
           }
         }
         if (fr == null) {
@@ -924,7 +1043,7 @@ public class BaseValidator implements IValidationContextResourceLoader {
       return null;
     if (bnd.fhirType().equals(BUNDLE)) {
       for (Element be : bnd.getChildrenByName(ENTRY)) {
-        Element res = be.getNamedChild(RESOURCE);
+        Element res = be.getNamedChild(RESOURCE, false);
         if (res != null) {
           String fullUrl = be.getChildValue(FULL_URL);
           String rt = res.fhirType();
@@ -939,70 +1058,175 @@ public class BaseValidator implements IValidationContextResourceLoader {
     return null;
   }
 
-  protected Element resolveInBundle(Element bundle, List<Element> entries, String ref, String fullUrl, String type, String id) {
+  protected Element resolveInBundle(Element bundle, List<Element> entries, String ref, String fullUrl, String type, String id, NodeStack stack, List<ValidationMessage> errors, String name, Element source, boolean isWarning, boolean isNLLink) {
     @SuppressWarnings("unchecked")
-    Map<String, Element> map = (Map<String, Element>) bundle.getUserData("validator.entrymap");
+    Map<String, List<Element>> map = (Map<String, List<Element>>) bundle.getUserData("validator.entrymap");
+    @SuppressWarnings("unchecked")
+    Map<String, List<Element>> relMap = (Map<String, List<Element>>) bundle.getUserData("validator.entrymapR");
+    List<Element> list = null;
+
     if (map == null) {
       map = new HashMap<>();
       bundle.setUserData("validator.entrymap", map);
+      relMap = new HashMap<>();
+      bundle.setUserData("validator.entrymapR", relMap);
       for (Element entry : entries) {
-        String fu = entry.getNamedChildValue(FULL_URL);
-        map.put(fu,  entry);
-        Element resource = entry.getNamedChild(RESOURCE);
+        String fu = entry.getNamedChildValue(FULL_URL, false);
+        list = map.get(fu);
+        if (list == null) {
+          list = new ArrayList<Element>();
+          map.put(fu, list);
+        }
+        list.add(entry);
+        
+        Element resource = entry.getNamedChild(RESOURCE, false);
         if (resource != null) {
           String et = resource.getType();
-          String eid = resource.getNamedChildValue(ID);
-          map.put(et+"/"+eid,  entry);
+          String eid = resource.getNamedChildValue(ID, false);
+          if (eid != null) {
+            String rl = et+"/"+eid;
+            list = relMap.get(rl);
+            if (list == null) {
+              list = new ArrayList<Element>();
+              relMap.put(rl, list);
+            }
+            list.add(entry);
+          }
         }
       }      
     }
     
+    String fragment = null;
+    if (ref != null && ref.contains("#")) {
+      fragment = ref.substring(ref.indexOf("#")+1);
+      ref = ref.substring(0, ref.indexOf("#"));
+    }
+    
     if (Utilities.isAbsoluteUrl(ref)) {
       // if the reference is absolute, then you resolve by fullUrl. No other thinking is required.
-      return map.get(ref);
-//      for (Element entry : entries) {
-//        String fu = entry.getNamedChildValue(FULL_URL);
-//        if (ref.equals(fu))
-//          return entry;
-//      }
-//      return null;
+      List<Element> el = map.get(ref);
+      if (el == null) {
+        // if this something we complain about? 
+        // not if it's in a package, or it looks like a restful URL and it's one of the canonical resource types
+        boolean ok = context.hasResource(Resource.class, ref);
+        if (!ok && ref.matches(urlRegex)) {
+          String tt = extractResourceType(ref);
+          ok = VersionUtilities.getCanonicalResourceNames(context.getVersion()).contains(tt);
+        }
+        if (!ok && stack != null && !sessionId.equals(source.getUserString("bundle.error.noted"))) {
+          source.setUserData("bundle.error.noted", sessionId);          
+          hintOrError(!isWarning, errors, NO_RULE_DATE, IssueType.NOTFOUND, stack, false, I18nConstants.BUNDLE_BUNDLE_ENTRY_NOTFOUND, ref, name);
+        }
+        return null;
+      } else if (el.size() == 1) {
+        if (fragment != null) {
+          int i = countFragmentMatches(el.get(0), fragment);
+          if (i == 0) {
+            source.setUserData("bundle.error.noted", sessionId);
+            hintOrError(isNLLink, errors, NO_RULE_DATE, IssueType.NOTFOUND, stack, false, I18nConstants.BUNDLE_BUNDLE_ENTRY_NOTFOUND_FRAGMENT, ref, fragment, name);            
+          } else if (i > 1) {
+            source.setUserData("bundle.error.noted", sessionId);
+            rule(errors, "2023-11-15", IssueType.INVALID, stack, false, I18nConstants.BUNDLE_BUNDLE_ENTRY_FOUND_MULTIPLE_FRAGMENT, i, ref, fragment, name);            
+          }
+        }
+        return el.get(0);
+      } else {
+        if (stack != null && !sessionId.equals(source.getUserString("bundle.error.noted"))) {
+          source.setUserData("bundle.error.noted", sessionId);
+          rule(errors, "2023-11-15", IssueType.INVALID, stack, false, I18nConstants.BUNDLE_BUNDLE_ENTRY_FOUND_MULTIPLE, el.size(), ref, name);
+        }
+        return null;
+      }
     } else {
       // split into base, type, and id
       String u = null;
-      if (fullUrl != null && fullUrl.endsWith(type + "/" + id))
-        // fullUrl = complex
+      if (fullUrl != null && fullUrl.matches(urlRegex) && fullUrl.endsWith(type + "/" + id)) {
         u = fullUrl.substring(0, fullUrl.length() - (type + "/" + id).length()) + ref;
-//        u = fullUrl.substring((type+"/"+id).length())+ref;
-      String[] parts = ref.split("\\/");
-      if (parts.length >= 2) {
-        String t = parts[0];
-        String i = parts[1];
-        Element res = map.get(u);
-        if (res == null) {
-          res = map.get(t+"/"+i);
-        }
-        return res;
-//        for (Element entry : entries) {
-//          String fu = entry.getNamedChildValue(FULL_URL);
-//          if (fu != null && fu.equals(u))
-//            return entry;
-//          if (u == null) {
-//            Element resource = entry.getNamedChild(RESOURCE);
-//            if (resource != null) {
-//              String et = resource.getType();
-//              String eid = resource.getNamedChildValue(ID);
-//              if (t.equals(et) && i.equals(eid))
-//                return entry;
-//            }
-//          }
-//        }
       }
-      return null;
+      List<Element> el = map.get(u);
+      if (el != null && el.size() > 0) {
+        if (el.size() == 1) {
+          return el.get(0);
+        } else {
+          if (stack != null && !sessionId.equals(source.getUserString("bundle.error.noted"))) {
+            source.setUserData("bundle.error.noted", sessionId);
+            rule(errors, "2023-11-15", IssueType.INVALID, stack, false, I18nConstants.BUNDLE_BUNDLE_ENTRY_FOUND_MULTIPLE, el.size(), ref, name);
+          }
+          return null;
+        }
+      } else {
+        String[] parts = ref.split("\\/");
+        if (parts.length >= 2) {
+          String t = parts[0];
+          if (context.getResourceNamesAsSet().contains(t)) {
+            String i = parts[1];
+            el = relMap.get(t+"/"+i);
+            if (el != null) {
+              Set<String> tl = new HashSet<>();
+              for (Element e : el) {
+                String fu = e.getNamedChildValue(FULL_URL, false);
+                tl.add(fu == null ? "<missing>" : fu);
+              }
+              if (!VersionUtilities.isR4Plus(context.getVersion())) {
+                if (el.size() == 1) {
+                  return el.get(0);
+                } else if (stack != null && !sessionId.equals(source.getUserString("bundle.error.noted"))) {
+                  source.setUserData("bundle.error.noted", sessionId);
+                  rulePlural(errors, "2023-11-15", IssueType.INVALID, stack, false, el.size(), I18nConstants.BUNDLE_BUNDLE_ENTRY_NOTFOUND_APPARENT, ref, name, CommaSeparatedStringBuilder.join(",", Utilities.sorted(tl)));
+                }
+              } else if (stack != null && !sessionId.equals(source.getUserString("bundle.error.noted"))) {
+                source.setUserData("bundle.error.noted", sessionId);
+                rulePlural(errors, "2023-11-15", IssueType.INVALID, stack, false, el.size(), I18nConstants.BUNDLE_BUNDLE_ENTRY_NOTFOUND_APPARENT, ref, name, CommaSeparatedStringBuilder.join(",", Utilities.sorted(tl)));
+              }
+            } else {
+              if (stack != null && !sessionId.equals(source.getUserString("bundle.error.noted"))) {
+                source.setUserData("bundle.error.noted", sessionId);
+                hintOrError(!isWarning, errors, NO_RULE_DATE, IssueType.NOTFOUND, stack, false, I18nConstants.BUNDLE_BUNDLE_ENTRY_NOTFOUND, ref, name);
+              }            
+            }
+          }
+        }
+        return null;    
+      }
     }
   }
 
 
-  protected IndexedElement getFromBundle(Element bundle, String ref, String fullUrl, List<ValidationMessage> errors, String path, String type, boolean isTransaction) {
+  protected int countFragmentMatches(Element element, String fragment) {
+    int count = 0;
+    if (fragment.equals(element.getIdBase())) {
+      count++;
+    }
+    if (element.getXhtml() != null) {
+      count = count + countFragmentMatches(element.getXhtml(), fragment);
+    }
+    if (element.hasChildren()) {
+      for (Element child : element.getChildren()) {
+        count = count + countFragmentMatches(child, fragment);
+      }
+    }
+    return count;
+  }
+
+  private int countFragmentMatches(XhtmlNode node, String fragment) {
+    int count = 0;
+    if (fragment.equals(node.getAttribute("id"))) {
+      count++;
+    }
+    if (node.hasChildren()) {
+      for (XhtmlNode child : node.getChildNodes()) {
+        count = count + countFragmentMatches(child, fragment);
+      }
+    }
+    return count;
+  }
+
+  private String extractResourceType(String ref) {
+    String[] p = ref.split("\\/");
+    return p[p.length -2];
+  }
+
+  protected IndexedElement getFromBundle(Element bundle, String ref, String fullUrl, List<ValidationMessage> errors, String path, String type, boolean isTransaction, BooleanHolder bh) {
     String targetUrl = null;
     String version = "";
     String resourceType = null;
@@ -1049,13 +1273,15 @@ public class BaseValidator implements IValidationContextResourceLoader {
         String[] refBaseParts = ref.substring(0, ref.indexOf("/_history/")).split("/");
         resourceType = refBaseParts[0];
         id = refBaseParts[1];
+        targetUrl = base + resourceType+"/"+ id;
       } else if (base.startsWith("urn")) {
         resourceType = ref.split("/")[0];
         id = ref.split("/")[1];
-      } else
+        targetUrl = base + id;
+      } else {
         id = ref;
-
-      targetUrl = base + id;
+        targetUrl = base + id;
+      }
     }
 
     List<Element> entries = new ArrayList<Element>();
@@ -1065,7 +1291,7 @@ public class BaseValidator implements IValidationContextResourceLoader {
     for (int i = 0; i < entries.size(); i++) {
       Element we = entries.get(i);
       if (targetUrl.equals(we.getChildValue(FULL_URL))) {
-        Element r = we.getNamedChild(RESOURCE);
+        Element r = we.getNamedChild(RESOURCE, false);
         if (version.isEmpty()) {
           rule(errors, NO_RULE_DATE, IssueType.FORBIDDEN, -1, -1, path, match == null, I18nConstants.BUNDLE_BUNDLE_MULTIPLEMATCHES, ref);
           match = r;
@@ -1086,7 +1312,7 @@ public class BaseValidator implements IValidationContextResourceLoader {
     }
 
     if (match != null && resourceType != null)
-      rule(errors, NO_RULE_DATE, IssueType.REQUIRED, -1, -1, path, match.getType().equals(resourceType), I18nConstants.REFERENCE_REF_RESOURCETYPE, ref, match.getType());
+      bh.see(rule(errors, NO_RULE_DATE, IssueType.REQUIRED, -1, -1, path, match.getType().equals(resourceType), I18nConstants.REFERENCE_REF_RESOURCETYPE, ref, match.getType()));
     if (match == null) {
       warning(errors, NO_RULE_DATE, IssueType.REQUIRED, -1, -1, path, !ref.startsWith("urn"), I18nConstants.BUNDLE_BUNDLE_NOT_LOCAL, ref);
       if (!Utilities.isAbsoluteUrl(ref)) {
@@ -1095,8 +1321,8 @@ public class BaseValidator implements IValidationContextResourceLoader {
         if (p.length >= 2 && context.getResourceNamesAsSet().contains(p[0]) && Utilities.isValidId(p[1])) {
           for (int i = 0; i < entries.size(); i++) {
             Element we = entries.get(i);
-            Element r = we.getNamedChild(RESOURCE);
-            if (r != null && p[0].equals(r.fhirType()) && p[1].equals(r.getNamedChildValue("id")) ) {
+            Element r = we.getNamedChild(RESOURCE, false);
+            if (r != null && p[0].equals(r.fhirType()) && p[1].equals(r.getNamedChildValue("id", false)) ) {
               ml.add(we);
             }
           }          
@@ -1206,25 +1432,7 @@ public class BaseValidator implements IValidationContextResourceLoader {
     return null;
   }
   
-  protected String versionFromCanonical(String system) {
-    if (system == null) {
-      return null;
-    } else if (system.contains("|")) {
-      return system.substring(0, system.indexOf("|"));
-    } else {
-      return system;
-    }
-  }
 
-  protected String systemFromCanonical(String system) {
-    if (system == null) {
-      return null;
-    } else if (system.contains("|")) {
-      return system.substring(system.indexOf("|")+1);
-    } else {
-      return system;
-    }
-  }
   
   @Override
   public Resource loadContainedResource(List<ValidationMessage> errors, String path, Element resource, String id, Class<? extends Resource> class1) throws FHIRException {
@@ -1294,6 +1502,11 @@ public class BaseValidator implements IValidationContextResourceLoader {
     return url != null && url.contains("hl7");
   }
 
+  protected boolean isHL7Core(Element cr) {
+    String url = cr.getChildValue("url");
+    return url != null && url.startsWith("http://hl7.org/fhir/") && !url.startsWith("http://hl7.org/fhir/test");
+  }
+
   public boolean isAllowExamples() {
     return this.allowExamples;
   }
@@ -1324,7 +1537,8 @@ public class BaseValidator implements IValidationContextResourceLoader {
   }
  
 
-  protected void checkDefinitionStatus(List<ValidationMessage> errors, Element element, String path, StructureDefinition ex, CanonicalResource source, String type) {
+  protected boolean checkDefinitionStatus(List<ValidationMessage> errors, Element element, String path, StructureDefinition ex, CanonicalResource source, String type) {
+    boolean ok = true;
     String vurl = ex.getVersionedUrl();
 
     StandardsStatus standardsStatus = ToolingExtensions.getStandardsStatus(ex);
@@ -1358,6 +1572,85 @@ public class BaseValidator implements IValidationContextResourceLoader {
         }
       }
     }
+    return ok;
+  }
+
+
+  public BestPracticeWarningLevel getBestPracticeWarningLevel() {
+    return bpWarnings;
+  }
+
+  
+  protected boolean bpCheck(List<ValidationMessage> errors, IssueType invalid, int line, int col, String literalPath, boolean test, String message, Object... theMessageArguments) {
+    if (bpWarnings != null) {
+      switch (bpWarnings) {
+        case Error:
+          rule(errors, NO_RULE_DATE, invalid, line, col, literalPath, test, message, theMessageArguments);
+          return test;
+        case Warning:
+          warning(errors, NO_RULE_DATE, invalid, line, col, literalPath, test, message, theMessageArguments);
+          return true;
+        case Hint:
+          hint(errors, NO_RULE_DATE, invalid, line, col, literalPath, test, message, theMessageArguments);
+          return true;
+        default: // do nothing
+          break;
+      }
+    }
+    return true;
+  }
+
+  public List<UsageContext> getUsageContexts() {
+    return usageContexts;
+  }
+  
+  protected boolean hasUseContext(Coding use, Coding value) {
+    for (UsageContext usage : usageContexts)  {
+      if (isContext(use, value, usage)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private boolean isContext(Coding use, Coding value, UsageContext usage) {
+    return usage.getValue() instanceof Coding && context.subsumes(baseOptions, usage.getCode(), use) && context.subsumes(baseOptions, (Coding) usage.getValue(), value);
+  }
+  
+
+  protected boolean isKnownUsage(UsageContext usage) {
+    for (UsageContext t : usageContexts) {
+      if (usagesMatch(usage, t)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private boolean usagesMatch(UsageContext usage, UsageContext t) {
+    if (usage.hasCode() && t.hasCode() && usage.hasValue() && t.hasValue()) {
+      if (usage.getCode().matches(t.getCode())) {
+        if (usage.getValue().fhirType().equals(t.getValue().fhirType())) {
+          switch (usage.getValue().fhirType()) {
+          case "CodeableConcept": 
+            for (Coding uc : usage.getValueCodeableConcept().getCoding()) {              
+              for (Coding tc : t.getValueCodeableConcept().getCoding()) {
+                if (uc.matches(tc)) {
+                  return true;
+                }
+              }
+            }
+          case "Quantity":  
+            return false; // for now
+          case "Range": 
+            return false; // for now
+          case "Reference":
+            return false; // for now
+          }
+        }
+      }
+    }
+    return false;
   }
 
 }

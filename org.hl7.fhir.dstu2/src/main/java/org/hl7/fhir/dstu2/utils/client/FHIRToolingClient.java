@@ -48,6 +48,7 @@ import org.hl7.fhir.dstu2.model.PrimitiveType;
 import org.hl7.fhir.dstu2.model.Resource;
 import org.hl7.fhir.dstu2.model.StringType;
 import org.hl7.fhir.dstu2.model.ValueSet;
+import org.hl7.fhir.utilities.FHIRBaseToolingClient;
 import org.hl7.fhir.utilities.ToolingClientLogger;
 import org.hl7.fhir.utilities.Utilities;
 
@@ -81,15 +82,12 @@ import org.hl7.fhir.utilities.Utilities;
  * @author Claude Nanjo
  *
  */
-public class FHIRToolingClient {
+public class FHIRToolingClient extends FHIRBaseToolingClient {
 
   public static final String DATETIME_FORMAT = "yyyy-MM-dd'T'HH:mm:ssK";
   public static final String DATE_FORMAT = "yyyy-MM-dd";
   public static final String hostKey = "http.proxyHost";
   public static final String portKey = "http.proxyPort";
-  private static final int TIMEOUT_NORMAL = 1;
-  private static final int TIMEOUT_OPERATION = 2;
-  private static final int TIMEOUT_OPERATION_LONG = 3;
 
   private String base;
   private ResourceAddress resourceAddress;
@@ -98,6 +96,7 @@ public class FHIRToolingClient {
   private int maxResultSetSize = -1;// _count
   private Conformance conf;
   private ClientUtils utils = new ClientUtils();
+  private int useCount;
 
   // Pass enpoint for client - URI
   public FHIRToolingClient(String baseServiceUrl, String userAgent) throws URISyntaxException {
@@ -179,11 +178,11 @@ public class FHIRToolingClient {
     try {
       if (useOptionsVerb) {
         conformance = (Conformance) utils
-            .issueOptionsRequest(resourceAddress.getBaseServiceUri(), getPreferredResourceFormat(), TIMEOUT_NORMAL)
+            .issueOptionsRequest(resourceAddress.getBaseServiceUri(), withVer(getPreferredResourceFormat(), "1.0"), timeoutNormal)
             .getReference();// TODO fix this
       } else {
         conformance = (Conformance) utils.issueGetResourceRequest(resourceAddress.resolveMetadataUri(false),
-            getPreferredResourceFormat(), TIMEOUT_NORMAL).getReference();
+            withVer(getPreferredResourceFormat(), "1.0"), timeoutNormal).getReference();
       }
     } catch (Exception e) {
       handleException("An error has occurred while trying to fetch the server's conformance statement", e);
@@ -202,11 +201,11 @@ public class FHIRToolingClient {
     try {
       if (useOptionsVerb) {
         conformance = (Conformance) utils
-            .issueOptionsRequest(resourceAddress.getBaseServiceUri(), getPreferredResourceFormat(), TIMEOUT_NORMAL)
+            .issueOptionsRequest(resourceAddress.getBaseServiceUri(), withVer(getPreferredResourceFormat(), "1.0"), timeoutNormal)
             .getReference();// TODO fix this
       } else {
         conformance = (Conformance) utils.issueGetResourceRequest(resourceAddress.resolveMetadataUri(true),
-            getPreferredResourceFormat(), TIMEOUT_NORMAL).getReference();
+            withVer(getPreferredResourceFormat(), "1.0"), timeoutNormal).getReference();
       }
     } catch (Exception e) {
       handleException("An error has occurred while trying to fetch the server's conformance statement", e);
@@ -215,10 +214,11 @@ public class FHIRToolingClient {
   }
 
   public <T extends Resource> T read(Class<T> resourceClass, String id) {// TODO Change this to AddressableResource
+    recordUse();
     ResourceRequest<T> result = null;
     try {
       result = utils.issueGetResourceRequest(resourceAddress.resolveGetUriFromResourceClassAndId(resourceClass, id),
-          getPreferredResourceFormat(), TIMEOUT_NORMAL);
+          withVer(getPreferredResourceFormat(), "1.0"), timeoutNormal);
       result.addErrorStatus(410);// gone
       result.addErrorStatus(404);// unknown
       result.addSuccessStatus(200);// Only one for now
@@ -233,11 +233,12 @@ public class FHIRToolingClient {
   }
 
   public <T extends Resource> T vread(Class<T> resourceClass, String id, String version) {
+    recordUse();
     ResourceRequest<T> result = null;
     try {
       result = utils.issueGetResourceRequest(
           resourceAddress.resolveGetUriFromResourceClassAndIdAndVersion(resourceClass, id, version),
-          getPreferredResourceFormat(), TIMEOUT_NORMAL);
+          withVer(getPreferredResourceFormat(), "1.0"), timeoutNormal);
       result.addErrorStatus(410);// gone
       result.addErrorStatus(404);// unknown
       result.addErrorStatus(405);// unknown
@@ -256,11 +257,12 @@ public class FHIRToolingClient {
   // fhir/ValueSet?url=http://hl7.org/fhir/ValueSet/clinical-findings&version=0.8
 
   public <T extends Resource> T getCanonical(Class<T> resourceClass, String canonicalURL) {
+    recordUse();
     ResourceRequest<T> result = null;
     try {
       result = utils.issueGetResourceRequest(
           resourceAddress.resolveGetUriFromResourceClassAndCanonical(resourceClass, canonicalURL),
-          getPreferredResourceFormat(), TIMEOUT_NORMAL);
+          withVer(getPreferredResourceFormat(), "1.0"), timeoutNormal);
       result.addErrorStatus(410);// gone
       result.addErrorStatus(404);// unknown
       result.addErrorStatus(405);// unknown
@@ -281,13 +283,14 @@ public class FHIRToolingClient {
   }
 
   public Resource update(Resource resource) {
+    recordUse();
     ResourceRequest<Resource> result = null;
     try {
       List<Header> headers = null;
       result = utils.issuePutRequest(
           resourceAddress.resolveGetUriFromResourceClassAndId(resource.getClass(), resource.getId()),
           utils.getResourceAsByteArray(resource, false, isJson(getPreferredResourceFormat())),
-          getPreferredResourceFormat(), headers, TIMEOUT_OPERATION);
+          withVer(getPreferredResourceFormat(), "1.0"), headers, timeoutOperation);
       result.addErrorStatus(410);// gone
       result.addErrorStatus(404);// unknown
       result.addErrorStatus(405);
@@ -317,12 +320,13 @@ public class FHIRToolingClient {
   }
 
   public <T extends Resource> T update(Class<T> resourceClass, T resource, String id) {
+    recordUse();
     ResourceRequest<T> result = null;
     try {
       List<Header> headers = null;
       result = utils.issuePutRequest(resourceAddress.resolveGetUriFromResourceClassAndId(resourceClass, id),
           utils.getResourceAsByteArray(resource, false, isJson(getPreferredResourceFormat())),
-          getPreferredResourceFormat(), headers, TIMEOUT_OPERATION);
+          withVer(getPreferredResourceFormat(), "1.0"), headers, timeoutOperation);
       result.addErrorStatus(410);// gone
       result.addErrorStatus(404);// unknown
       result.addErrorStatus(405);
@@ -366,7 +370,7 @@ public class FHIRToolingClient {
 //	  ResourceRequest<T> resourceRequest = null;
 //	  try {
 //	    List<Header> headers = null;
-//	    resourceRequest = utils.issuePostRequest(resourceAddress.resolveGetUriFromResourceClass(resourceClass),utils.getResourceAsByteArray(resource, false, isJson(getPreferredResourceFormat())), getPreferredResourceFormat(), headers, proxy);
+//	    resourceRequest = utils.issuePostRequest(resourceAddress.resolveGetUriFromResourceClass(resourceClass),utils.getResourceAsByteArray(resource, false, isJson(getPreferredResourceFormat())), withVer(getPreferredResourceFormat(), "1.0"), headers, proxy);
 //	    resourceRequest.addSuccessStatus(201);
 //	    if(resourceRequest.isUnsuccessfulRequest()) {
 //	      throw new EFhirClientException("Server responded with HTTP error code " + resourceRequest.getHttpStatus(), (OperationOutcome)resourceRequest.getPayload());
@@ -399,7 +403,7 @@ public class FHIRToolingClient {
 //	public <T extends Resource> Bundle history(Calendar lastUpdate, Class<T> resourceClass, String id) {
 //		Bundle history = null;
 //		try {
-//			history = utils.issueGetFeedRequest(resourceAddress.resolveGetHistoryForResourceId(resourceClass, id, lastUpdate, maxResultSetSize), getPreferredResourceFormat(), proxy);
+//			history = utils.issueGetFeedRequest(resourceAddress.resolveGetHistoryForResourceId(resourceClass, id, lastUpdate, maxResultSetSize), withVer(getPreferredResourceFormat(), "1.0"), proxy);
 //		} catch (Exception e) {
 //			handleException("An error has occurred while trying to retrieve history information for this resource", e);
 //		}
@@ -410,7 +414,7 @@ public class FHIRToolingClient {
 //	public <T extends Resource> Bundle history(Date lastUpdate, Class<T> resourceClass, String id) {
 //		Bundle history = null;
 //		try {
-//			history = utils.issueGetFeedRequest(resourceAddress.resolveGetHistoryForResourceId(resourceClass, id, lastUpdate, maxResultSetSize), getPreferredResourceFormat(), proxy);
+//			history = utils.issueGetFeedRequest(resourceAddress.resolveGetHistoryForResourceId(resourceClass, id, lastUpdate, maxResultSetSize), withVer(getPreferredResourceFormat(), "1.0"), proxy);
 //		} catch (Exception e) {
 //			handleException("An error has occurred while trying to retrieve history information for this resource", e);
 //		}
@@ -421,7 +425,7 @@ public class FHIRToolingClient {
 //	public <T extends Resource> Bundle history(Calendar lastUpdate, Class<T> resourceClass) {
 //		Bundle history = null;
 //		try {
-//			history = utils.issueGetFeedRequest(resourceAddress.resolveGetHistoryForResourceType(resourceClass, lastUpdate, maxResultSetSize), getPreferredResourceFormat(), proxy);
+//			history = utils.issueGetFeedRequest(resourceAddress.resolveGetHistoryForResourceType(resourceClass, lastUpdate, maxResultSetSize), withVer(getPreferredResourceFormat(), "1.0"), proxy);
 //		} catch (Exception e) {
 //			handleException("An error has occurred while trying to retrieve history information for this resource type", e);
 //		}
@@ -432,7 +436,7 @@ public class FHIRToolingClient {
 //	public <T extends Resource> Bundle history(Date lastUpdate, Class<T> resourceClass) {
 //		Bundle history = null;
 //		try {
-//			history = utils.issueGetFeedRequest(resourceAddress.resolveGetHistoryForResourceType(resourceClass, lastUpdate, maxResultSetSize), getPreferredResourceFormat(), proxy);
+//			history = utils.issueGetFeedRequest(resourceAddress.resolveGetHistoryForResourceType(resourceClass, lastUpdate, maxResultSetSize), withVer(getPreferredResourceFormat(), "1.0"), proxy);
 //		} catch (Exception e) {
 //			handleException("An error has occurred while trying to retrieve history information for this resource type", e);
 //		}
@@ -443,7 +447,7 @@ public class FHIRToolingClient {
 //	public <T extends Resource> Bundle history(Class<T> resourceClass) {
 //		Bundle history = null;
 //		try {
-//			history = utils.issueGetFeedRequest(resourceAddress.resolveGetHistoryForResourceType(resourceClass, maxResultSetSize), getPreferredResourceFormat(), proxy);
+//			history = utils.issueGetFeedRequest(resourceAddress.resolveGetHistoryForResourceType(resourceClass, maxResultSetSize), withVer(getPreferredResourceFormat(), "1.0"), proxy);
 //		} catch (Exception e) {
 //			handleException("An error has occurred while trying to retrieve history information for this resource type", e);
 //		}
@@ -454,7 +458,7 @@ public class FHIRToolingClient {
 //	public <T extends Resource> Bundle history(Class<T> resourceClass, String id) {
 //		Bundle history = null;
 //		try {
-//			history = utils.issueGetFeedRequest(resourceAddress.resolveGetHistoryForResourceId(resourceClass, id, maxResultSetSize), getPreferredResourceFormat(), proxy);
+//			history = utils.issueGetFeedRequest(resourceAddress.resolveGetHistoryForResourceId(resourceClass, id, maxResultSetSize), withVer(getPreferredResourceFormat(), "1.0"), proxy);
 //		} catch (Exception e) {
 //			handleException("An error has occurred while trying to retrieve history information for this resource", e);
 //		}
@@ -465,7 +469,7 @@ public class FHIRToolingClient {
 //	public <T extends Resource> Bundle history(Date lastUpdate) {
 //		Bundle history = null;
 //		try {
-//			history = utils.issueGetFeedRequest(resourceAddress.resolveGetHistoryForAllResources(lastUpdate, maxResultSetSize), getPreferredResourceFormat(), proxy);
+//			history = utils.issueGetFeedRequest(resourceAddress.resolveGetHistoryForAllResources(lastUpdate, maxResultSetSize), withVer(getPreferredResourceFormat(), "1.0"), proxy);
 //		} catch (Exception e) {
 //			handleException("An error has occurred while trying to retrieve history since last update",e);
 //		}
@@ -476,7 +480,7 @@ public class FHIRToolingClient {
 //	public <T extends Resource> Bundle history(Calendar lastUpdate) {
 //		Bundle history = null;
 //		try {
-//			history = utils.issueGetFeedRequest(resourceAddress.resolveGetHistoryForAllResources(lastUpdate, maxResultSetSize), getPreferredResourceFormat(), proxy);
+//			history = utils.issueGetFeedRequest(resourceAddress.resolveGetHistoryForAllResources(lastUpdate, maxResultSetSize), withVer(getPreferredResourceFormat(), "1.0"), proxy);
 //		} catch (Exception e) {
 //			handleException("An error has occurred while trying to retrieve history since last update",e);
 //		}
@@ -487,7 +491,7 @@ public class FHIRToolingClient {
 //	public <T extends Resource> Bundle history() {
 //		Bundle history = null;
 //		try {
-//			history = utils.issueGetFeedRequest(resourceAddress.resolveGetHistoryForAllResources(maxResultSetSize), getPreferredResourceFormat(), proxy);
+//			history = utils.issueGetFeedRequest(resourceAddress.resolveGetHistoryForAllResources(maxResultSetSize), withVer(getPreferredResourceFormat(), "1.0"), proxy);
 //		} catch (Exception e) {
 //			handleException("An error has occurred while trying to retrieve history since last update",e);
 //		}
@@ -498,7 +502,7 @@ public class FHIRToolingClient {
 //	public <T extends Resource> Bundle search(Class<T> resourceClass, Map<String, String> parameters) {
 //		Bundle searchResults = null;
 //		try {
-//			searchResults = utils.issueGetFeedRequest(resourceAddress.resolveSearchUri(resourceClass, parameters), getPreferredResourceFormat(), proxy);
+//			searchResults = utils.issueGetFeedRequest(resourceAddress.resolveSearchUri(resourceClass, parameters), withVer(getPreferredResourceFormat(), "1.0"), proxy);
 //		} catch (Exception e) {
 //			handleException("Error performing search with parameters " + parameters, e);
 //		}
@@ -517,6 +521,7 @@ public class FHIRToolingClient {
 //  }
 
   public <T extends Resource> Parameters operateType(Class<T> resourceClass, String name, Parameters params) {
+    recordUse();
     boolean complex = false;
     for (ParametersParameterComponent p : params.getParameter())
       complex = complex || !(p.getValue() instanceof PrimitiveType);
@@ -530,10 +535,10 @@ public class FHIRToolingClient {
     if (complex)
       result = utils.issuePostRequest(resourceAddress.resolveOperationURLFromClass(resourceClass, name, ps),
           utils.getResourceAsByteArray(params, false, isJson(getPreferredResourceFormat())),
-          getPreferredResourceFormat(), TIMEOUT_OPERATION_LONG);
+          withVer(getPreferredResourceFormat(), "1.0"), timeoutLong);
     else
       result = utils.issueGetResourceRequest(resourceAddress.resolveOperationURLFromClass(resourceClass, name, ps),
-          getPreferredResourceFormat(), TIMEOUT_OPERATION_LONG);
+          withVer(getPreferredResourceFormat(), "1.0"), timeoutLong);
     result.addErrorStatus(410);// gone
     result.addErrorStatus(404);// unknown
     result.addSuccessStatus(200);// Only one for now
@@ -550,11 +555,12 @@ public class FHIRToolingClient {
   }
 
   public Bundle transaction(Bundle batch) {
+    recordUse();
     Bundle transactionResult = null;
     try {
       transactionResult = utils.postBatchRequest(resourceAddress.getBaseServiceUri(),
-          utils.getFeedAsByteArray(batch, false, isJson(getPreferredResourceFormat())), getPreferredResourceFormat(),
-          TIMEOUT_NORMAL + batch.getEntry().size());
+          utils.getFeedAsByteArray(batch, false, isJson(getPreferredResourceFormat())), withVer(getPreferredResourceFormat(), "1.0"),
+          timeoutNormal + batch.getEntry().size());
     } catch (Exception e) {
       handleException("An error occurred trying to process this transaction request", e);
     }
@@ -563,11 +569,12 @@ public class FHIRToolingClient {
 
   @SuppressWarnings("unchecked")
   public <T extends Resource> OperationOutcome validate(Class<T> resourceClass, T resource, String id) {
+    recordUse();
     ResourceRequest<T> result = null;
     try {
       result = utils.issuePostRequest(resourceAddress.resolveValidateUri(resourceClass, id),
           utils.getResourceAsByteArray(resource, false, isJson(getPreferredResourceFormat())),
-          getPreferredResourceFormat(), 3);
+          withVer(getPreferredResourceFormat(), "1.0"), 3);
       result.addErrorStatus(400);// gone
       result.addErrorStatus(422);// Unprocessable Entity
       result.addSuccessStatus(200);// OK
@@ -586,7 +593,7 @@ public class FHIRToolingClient {
    * 
    * public List<Coding> getAllTags() { TagListRequest result = null; try { result
    * = utils.issueGetRequestForTagList(resourceAddress.resolveGetAllTags(),
-   * getPreferredResourceFormat(), null, proxy); } catch (Exception e) {
+   * withVer(getPreferredResourceFormat(), "1.0"), null, proxy); } catch (Exception e) {
    * handleException("An error has occurred while trying to retrieve all tags",
    * e); } return result.getPayload(); }
    * 
@@ -595,7 +602,7 @@ public class FHIRToolingClient {
    * resourceClass) { TagListRequest result = null; try { result =
    * utils.issueGetRequestForTagList(resourceAddress.
    * resolveGetAllTagsForResourceType(resourceClass),
-   * getPreferredResourceFormat(), null, proxy); } catch (Exception e) {
+   * withVer(getPreferredResourceFormat(), "1.0"), null, proxy); } catch (Exception e) {
    * handleException("An error has occurred while trying to retrieve tags for this resource type"
    * , e); } return result.getPayload(); }
    * 
@@ -603,7 +610,7 @@ public class FHIRToolingClient {
    * public <T extends Resource> List<Coding> getTagsForReference(Class<T>
    * resource, String id) { TagListRequest result = null; try { result =
    * utils.issueGetRequestForTagList(resourceAddress.resolveGetTagsForReference(
-   * resource, id), getPreferredResourceFormat(), null, proxy); } catch (Exception
+   * resource, id), withVer(getPreferredResourceFormat(), "1.0"), null, proxy); } catch (Exception
    * e) {
    * handleException("An error has occurred while trying to retrieve tags for this resource"
    * , e); } return result.getPayload(); }
@@ -613,7 +620,7 @@ public class FHIRToolingClient {
    * resource, String id, String versionId) { TagListRequest result = null; try {
    * result = utils.issueGetRequestForTagList(resourceAddress.
    * resolveGetTagsForResourceVersion(resource, id, versionId),
-   * getPreferredResourceFormat(), null, proxy); } catch (Exception e) {
+   * withVer(getPreferredResourceFormat(), "1.0"), null, proxy); } catch (Exception e) {
    * handleException("An error has occurred while trying to retrieve tags for this resource version"
    * , e); } return result.getPayload(); }
    * 
@@ -640,7 +647,7 @@ public class FHIRToolingClient {
    * request =
    * utils.issuePostRequestForTagList(resourceAddress.resolveGetTagsForReference(
    * resourceClass, id),utils.getTagListAsByteArray(tags, false,
-   * isJson(getPreferredResourceFormat())), getPreferredResourceFormat(), null,
+   * isJson(getPreferredResourceFormat())), withVer(getPreferredResourceFormat(), "1.0"), null,
    * proxy); request.addSuccessStatus(201); request.addSuccessStatus(200);
    * if(request.isUnsuccessfulRequest()) { throw new
    * EFhirClientException("Server responded with HTTP error code " +
@@ -654,7 +661,7 @@ public class FHIRToolingClient {
    * null; try { request = utils.issuePostRequestForTagList(resourceAddress.
    * resolveGetTagsForResourceVersion(resourceClass, id,
    * version),utils.getTagListAsByteArray(tags, false,
-   * isJson(getPreferredResourceFormat())), getPreferredResourceFormat(), null,
+   * isJson(getPreferredResourceFormat())), withVer(getPreferredResourceFormat(), "1.0"), null,
    * proxy); request.addSuccessStatus(201); request.addSuccessStatus(200);
    * if(request.isUnsuccessfulRequest()) { throw new
    * EFhirClientException("Server responded with HTTP error code " +
@@ -668,7 +675,7 @@ public class FHIRToolingClient {
    * null; try { request = utils.issuePostRequestForTagList(resourceAddress.
    * resolveDeleteTagsForResourceVersion(resourceClass, id,
    * version),utils.getTagListAsByteArray(tags, false,
-   * isJson(getPreferredResourceFormat())), getPreferredResourceFormat(), null,
+   * isJson(getPreferredResourceFormat())), withVer(getPreferredResourceFormat(), "1.0"), null,
    * proxy); request.addSuccessStatus(201); request.addSuccessStatus(200);
    * if(request.isUnsuccessfulRequest()) { throw new
    * EFhirClientException("Server responded with HTTP error code " +
@@ -707,6 +714,7 @@ public class FHIRToolingClient {
   }
 
   public Bundle fetchFeed(String url) {
+    recordUse();
     Bundle feed = null;
     try {
       feed = utils.issueGetFeedRequest(new URI(url), getPreferredResourceFormat());
@@ -716,29 +724,11 @@ public class FHIRToolingClient {
     return feed;
   }
 
-  public ValueSet expandValueset(ValueSet source) {
-    List<Header> headers = null;
-    ResourceRequest<Resource> result = utils.issuePostRequest(
-        resourceAddress.resolveOperationUri(ValueSet.class, "expand"),
-        utils.getResourceAsByteArray(source, false, isJson(getPreferredResourceFormat())), getPreferredResourceFormat(),
-        headers, TIMEOUT_OPERATION_LONG);
-    result.addErrorStatus(410);// gone
-    result.addErrorStatus(404);// unknown
-    result.addErrorStatus(405);
-    result.addErrorStatus(422);// Unprocessable Entity
-    result.addSuccessStatus(200);
-    result.addSuccessStatus(201);
-    if (result.isUnsuccessfulRequest()) {
-      throw new EFhirClientException("Server returned error code " + result.getHttpStatus(),
-          (OperationOutcome) result.getPayload());
-    }
-    return (ValueSet) result.getPayload();
-  }
-
   public Parameters lookupCode(Map<String, String> params) {
+    recordUse();
     ResourceRequest<Resource> result = utils.issueGetResourceRequest(
-        resourceAddress.resolveOperationUri(ValueSet.class, "lookup", params), getPreferredResourceFormat(),
-        TIMEOUT_NORMAL);
+        resourceAddress.resolveOperationUri(ValueSet.class, "lookup", params), withVer(getPreferredResourceFormat(), "1.0"),
+        timeoutNormal);
     result.addErrorStatus(410);// gone
     result.addErrorStatus(404);// unknown
     result.addErrorStatus(405);
@@ -752,15 +742,54 @@ public class FHIRToolingClient {
     return (Parameters) result.getPayload();
   }
 
-  public ValueSet expandValueset(ValueSet source, Parameters expParams, Map<String, String> params) {
+  public Parameters lookupCode(Parameters p) {
+    recordUse();
+    ResourceRequest<Resource> result = utils.issuePostRequest(
+        resourceAddress.resolveOperationUri(ValueSet.class, "lookup"), 
+        utils.getResourceAsByteArray(p, false, isJson(getPreferredResourceFormat())),
+        withVer(getPreferredResourceFormat(), "1.0"), 
+        timeoutNormal);
+    result.addErrorStatus(410);// gone
+    result.addErrorStatus(404);// unknown
+    result.addErrorStatus(405);
+    result.addErrorStatus(422);// Unprocessable Entity
+    result.addSuccessStatus(200);
+    result.addSuccessStatus(201);
+    if (result.isUnsuccessfulRequest()) {
+      throw new EFhirClientException("Server returned error code " + result.getHttpStatus(),
+          (OperationOutcome) result.getPayload());
+    }
+    return (Parameters) result.getPayload();
+  }
+
+  public Parameters translate(Parameters p) {
+    recordUse();
+    ResourceRequest<Resource> result = utils.issuePostRequest(
+        resourceAddress.resolveOperationUri(ConceptMap.class, "translate"), 
+        utils.getResourceAsByteArray(p, false, isJson(getPreferredResourceFormat())),
+        withVer(getPreferredResourceFormat(), "1.0"), 
+        timeoutNormal);
+    result.addErrorStatus(410);// gone
+    result.addErrorStatus(404);// unknown
+    result.addErrorStatus(405);
+    result.addErrorStatus(422);// Unprocessable Entity
+    result.addSuccessStatus(200);
+    result.addSuccessStatus(201);
+    if (result.isUnsuccessfulRequest()) {
+      throw new EFhirClientException("Server returned error code " + result.getHttpStatus(),
+          (OperationOutcome) result.getPayload());
+    }
+    return (Parameters) result.getPayload();
+  }
+
+  public ValueSet expandValueset(ValueSet source, Parameters expParams) {
+    recordUse();
     List<Header> headers = null;
     Parameters p = expParams == null ? new Parameters() : expParams.copy();
     p.addParameter().setName("valueSet").setResource(source);
-    for (String n : params.keySet())
-      p.addParameter().setName(n).setValue(new StringType(params.get(n)));
     ResourceRequest<Resource> result = utils.issuePostRequest(
-        resourceAddress.resolveOperationUri(ValueSet.class, "expand", params),
-        utils.getResourceAsByteArray(p, false, isJson(getPreferredResourceFormat())), getPreferredResourceFormat(),
+        resourceAddress.resolveOperationUri(ValueSet.class, "expand"),
+        utils.getResourceAsByteArray(p, false, isJson(getPreferredResourceFormat())), withVer(getPreferredResourceFormat(), "1.0"),
         headers, 4);
     result.addErrorStatus(410); // gone
     result.addErrorStatus(404); // unknown
@@ -775,34 +804,19 @@ public class FHIRToolingClient {
     return (ValueSet) result.getPayload();
   }
 
-//  public ValueSet expandValueset(ValueSet source, ExpansionProfile profile, Map<String, String> params) {
-//    List<Header> headers = null;
-//    ResourceRequest<Resource> result = utils.issuePostRequest(resourceAddress.resolveOperationUri(ValueSet.class, "expand", params), 
-//        utils.getResourceAsByteArray(source, false, isJson(getPreferredResourceFormat())), getPreferredResourceFormat(), headers, proxy);
-//    result.addErrorStatus(410);//gone
-//    result.addErrorStatus(404);//unknown
-//    result.addErrorStatus(405);
-//    result.addErrorStatus(422);//Unprocessable Entity
-//    result.addSuccessStatus(200);
-//    result.addSuccessStatus(201);
-//    if(result.isUnsuccessfulRequest()) {
-//      throw new EFhirClientException("Server returned error code " + result.getHttpStatus(), (OperationOutcome)result.getPayload());
-//    }
-//    return (ValueSet) result.getPayload();
-//  }
-
   public String getAddress() {
     return base;
   }
 
   public ConceptMap initializeClosure(String name) {
+    recordUse();
     Parameters params = new Parameters();
     params.addParameter().setName("name").setValue(new StringType(name));
     List<Header> headers = null;
     ResourceRequest<Resource> result = utils.issuePostRequest(
         resourceAddress.resolveOperationUri(null, "closure", new HashMap<String, String>()),
-        utils.getResourceAsByteArray(params, false, isJson(getPreferredResourceFormat())), getPreferredResourceFormat(),
-        headers, TIMEOUT_NORMAL);
+        utils.getResourceAsByteArray(params, false, isJson(getPreferredResourceFormat())), withVer(getPreferredResourceFormat(), "1.0"),
+        headers, timeoutNormal);
     result.addErrorStatus(410);// gone
     result.addErrorStatus(404);// unknown
     result.addErrorStatus(405);
@@ -817,14 +831,15 @@ public class FHIRToolingClient {
   }
 
   public ConceptMap updateClosure(String name, Coding coding) {
+    recordUse();
     Parameters params = new Parameters();
     params.addParameter().setName("name").setValue(new StringType(name));
     params.addParameter().setName("concept").setValue(coding);
     List<Header> headers = null;
     ResourceRequest<Resource> result = utils.issuePostRequest(
         resourceAddress.resolveOperationUri(null, "closure", new HashMap<String, String>()),
-        utils.getResourceAsByteArray(params, false, isJson(getPreferredResourceFormat())), getPreferredResourceFormat(),
-        headers, TIMEOUT_OPERATION);
+        utils.getResourceAsByteArray(params, false, isJson(getPreferredResourceFormat())), withVer(getPreferredResourceFormat(), "1.0"),
+        headers, timeoutOperation);
     result.addErrorStatus(410);// gone
     result.addErrorStatus(404);// unknown
     result.addErrorStatus(405);
@@ -864,7 +879,7 @@ public class FHIRToolingClient {
 
   public Parameters getTerminologyCapabilities() {
     return (Parameters) utils
-        .issueGetResourceRequest(resourceAddress.resolveMetadataTxCaps(), getPreferredResourceFormat(), TIMEOUT_NORMAL)
+        .issueGetResourceRequest(resourceAddress.resolveMetadataTxCaps(), withVer(getPreferredResourceFormat(), "1.0"), timeoutNormal)
         .getReference();
   }
 
@@ -896,7 +911,25 @@ public class FHIRToolingClient {
     return conf == null ? null : conf.getSoftware().getVersion();
   }
 
-  public void setLanguage(String lang) {
-    utils.setLanguage(lang);
+  public void setContentLanguage(String lang) {
+    utils.setContentLanguage(lang);
   }
+
+  public void setAcceptLanguage(String lang) {
+    utils.setAcceptLanguage(lang);
+  }
+
+  public int getUseCount() {
+    return useCount;
+  }
+
+  private void recordUse() {
+    useCount++;    
+  }
+
+  public Bundle search(String type, String criteria) {
+    recordUse();
+    return fetchFeed(Utilities.pathURL(base, type+criteria));
+  }
+ 
 }

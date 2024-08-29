@@ -1,13 +1,17 @@
 package org.hl7.fhir.validation.tests.utilities;
 
 import java.nio.file.Paths;
+import java.util.Locale;
 
-import org.hl7.fhir.r5.context.TerminologyCache;
+import org.hl7.fhir.r5.terminologies.utilities.TerminologyCache;
 import org.hl7.fhir.r5.test.utils.TestingUtilities;
+import org.hl7.fhir.r5.utils.validation.constants.ReferenceValidationPolicy;
 import org.hl7.fhir.utilities.FhirPublication;
 import org.hl7.fhir.utilities.tests.TestConfig;
 import org.hl7.fhir.utilities.tests.TestConstants;
 import org.hl7.fhir.validation.ValidationEngine;
+import org.hl7.fhir.validation.cli.services.StandAloneValidatorFetcher;
+import org.hl7.fhir.validation.instance.BasePolicyAdvisorForFullValidation;
 
 public class TestUtilities {
 
@@ -21,7 +25,7 @@ public class TestUtilities {
       .withVersion(vString)
       .withUserAgent(TestConstants.USER_AGENT)
       .withTerminologyCachePath(getTerminologyCacheDirectory(vString))
-      .withTxServer(txServer, txLog, version)
+      .withTxServer(txServer, txLog, version, false)
       .fromSource(src);
 
     TerminologyCache.setCacheErrors(true);
@@ -58,11 +62,16 @@ public class TestUtilities {
         .withVersion(vString)
         .withUserAgent(TestConstants.USER_AGENT)
         .withTerminologyCachePath(getTerminologyCacheDirectory(vString))
-        .withTxServer(txServer, TestConstants.TX_CACHE_LOG, version)
+        .withTxServer(txServer, TestConstants.TX_CACHE_LOG, version, false)
         .fromSource(src);
       TerminologyCache.setCacheErrors(true);
     }
 
+    validationEngine.setPolicyAdvisor(new BasePolicyAdvisorForFullValidation(ReferenceValidationPolicy.IGNORE));
     return validationEngine;
+  }
+
+  public static boolean runningAsSurefire() {
+    return "true".equals(System.getProperty("runningAsSurefire") != null ? System.getProperty("runningAsSurefire").toLowerCase(Locale.ENGLISH) : "");
   }
 }

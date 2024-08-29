@@ -78,6 +78,15 @@ public class ResourceAddress {
 		return this.baseServiceUri;
 	}
 	
+
+  public URI resolveGetUriFromResourceClassAndId(String resourceClass, String id) {
+    return baseServiceUri.resolve(resourceClass + "/" + id);
+  }
+
+  public <T extends Resource> URI resolveGetResource(Class<T> resourceClass, String id) {
+    return baseServiceUri.resolve(nameForClassWithSlash(resourceClass) + "/" + id);
+  }
+  
 	public <T extends Resource> URI resolveOperationURLFromClass(Class<T> resourceClass, String name, String parameters) {
 		return baseServiceUri.resolve(nameForClassWithSlash(resourceClass) +"$"+name+"?"+ parameters);
 	}
@@ -92,7 +101,7 @@ public class ResourceAddress {
 	}
 	
   public <T extends Resource> URI resolveOperationUri(Class<T> resourceClass, String opName) {
-    return baseServiceUri.resolve(nameForClassWithSlash(resourceClass) +"/"+opName);
+    return baseServiceUri.resolve(nameForClassWithSlash(resourceClass) +"$"+opName);
   }
   
   public <T extends Resource> URI resolveOperationUri(Class<T> resourceClass, String opName, Map<String,String> parameters) {

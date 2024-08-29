@@ -9,16 +9,17 @@ import java.util.stream.Stream;
 import javax.xml.parsers.ParserConfigurationException;
 
 import org.hl7.fhir.dstu3.context.SimpleWorkerContext;
+import org.hl7.fhir.dstu3.fhirpath.ExpressionNode;
+import org.hl7.fhir.dstu3.fhirpath.FHIRPathEngine;
 import org.hl7.fhir.dstu3.formats.XmlParser;
 import org.hl7.fhir.dstu3.model.Base;
 import org.hl7.fhir.dstu3.model.BooleanType;
-import org.hl7.fhir.dstu3.model.ExpressionNode;
 import org.hl7.fhir.dstu3.model.PrimitiveType;
 import org.hl7.fhir.dstu3.model.Resource;
 import org.hl7.fhir.dstu3.test.support.TestingUtilities;
-import org.hl7.fhir.dstu3.utils.FHIRPathEngine;
 import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.utilities.Utilities;
+import org.hl7.fhir.utilities.filesystem.ManagedFileAccess;
 import org.hl7.fhir.utilities.xml.XMLUtil;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
@@ -59,7 +60,7 @@ public class FluentPathTests {
       if (Utilities.noString(input))
         fp.check(null, null, node);
       else {
-        res = new XmlParser().parse(new FileInputStream(Utilities.path("C:\\work\\org.hl7.fhir\\build\\publish", input)));
+        res = new XmlParser().parse(ManagedFileAccess.inStream(Utilities.path("C:\\work\\org.hl7.fhir\\build\\publish", input)));
         fp.check(res, res.getResourceType().toString(), res.getResourceType().toString(), node);
       }
       outcome = fp.evaluate(res, node);

@@ -99,9 +99,11 @@ import org.hl7.fhir.r4.utils.TranslatingUtilities;
 import org.hl7.fhir.r4.utils.formats.CSVWriter;
 import org.hl7.fhir.r4.utils.formats.XLSXWriter;
 import org.hl7.fhir.utilities.CommaSeparatedStringBuilder;
+import org.hl7.fhir.utilities.FhirPublication;
 import org.hl7.fhir.utilities.TerminologyServiceOptions;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.VersionUtilities;
+import org.hl7.fhir.utilities.i18n.RenderingI18nContext;
 import org.hl7.fhir.utilities.validation.ValidationMessage;
 import org.hl7.fhir.utilities.validation.ValidationMessage.Source;
 import org.hl7.fhir.utilities.xhtml.HierarchicalTableGenerator;
@@ -252,7 +254,7 @@ public class ProfileUtilities extends TranslatingUtilities {
   private ProfileKnowledgeProvider pkp;
   private boolean igmode;
   private boolean exception;
-  private TerminologyServiceOptions terminologyServiceOptions = new TerminologyServiceOptions();
+  private TerminologyServiceOptions terminologyServiceOptions = new TerminologyServiceOptions(FhirPublication.R4);
   private boolean newSlicingProcessing;
 
   public ProfileUtilities(IWorkerContext context, List<ValidationMessage> messages, ProfileKnowledgeProvider pkp) {
@@ -2385,8 +2387,7 @@ public class ProfileUtilities extends TranslatingUtilities {
   public XhtmlNode generateExtensionTable(String defFile, StructureDefinition ed, String imageFolder,
       boolean inlineGraphics, boolean full, String corePath, String imagePath, Set<String> outputTracker)
       throws IOException, FHIRException {
-    HierarchicalTableGenerator gen = new HierarchicalTableGenerator(imageFolder, inlineGraphics, true);
-    gen.setTranslator(getTranslator());
+    HierarchicalTableGenerator gen = new HierarchicalTableGenerator(new RenderingI18nContext(), imageFolder, inlineGraphics, true);
     TableModel model = gen.initNormalTable(corePath, false, true, ed.getId(), false, TableGenerationMode.XML);
 
     boolean deep = false;
@@ -2791,8 +2792,7 @@ public class ProfileUtilities extends TranslatingUtilities {
       boolean inlineGraphics, String profileBaseFileName, boolean snapshot, String corePath, String imagePath,
       boolean logicalModel, boolean allInvariants, Set<String> outputTracker) throws IOException, FHIRException {
     assert (diff != snapshot);// check it's ok to get rid of one of these
-    HierarchicalTableGenerator gen = new HierarchicalTableGenerator(imageFolder, inlineGraphics, true);
-    gen.setTranslator(getTranslator());
+    HierarchicalTableGenerator gen = new HierarchicalTableGenerator(new RenderingI18nContext(), imageFolder, inlineGraphics, true);
     TableModel model = gen.initNormalTable(corePath, false, true, profile.getId() + (diff ? "d" : "s"), false,
         TableGenerationMode.XML);
     List<ElementDefinition> list = diff ? profile.getDifferential().getElement() : profile.getSnapshot().getElement();
@@ -2816,8 +2816,7 @@ public class ProfileUtilities extends TranslatingUtilities {
   public XhtmlNode generateGrid(String defFile, StructureDefinition profile, String imageFolder, boolean inlineGraphics,
       String profileBaseFileName, String corePath, String imagePath, Set<String> outputTracker)
       throws IOException, FHIRException {
-    HierarchicalTableGenerator gen = new HierarchicalTableGenerator(imageFolder, inlineGraphics, true);
-    gen.setTranslator(getTranslator());
+    HierarchicalTableGenerator gen = new HierarchicalTableGenerator(new RenderingI18nContext(), imageFolder, inlineGraphics, true);
     TableModel model = gen.initGridTable(corePath, profile.getId());
     List<ElementDefinition> list = profile.getSnapshot().getElement();
     List<StructureDefinition> profiles = new ArrayList<StructureDefinition>();
@@ -4968,8 +4967,7 @@ public class ProfileUtilities extends TranslatingUtilities {
 
   public XhtmlNode generateSpanningTable(StructureDefinition profile, String imageFolder, boolean onlyConstraints,
       String constraintPrefix, Set<String> outputTracker) throws IOException, FHIRException {
-    HierarchicalTableGenerator gen = new HierarchicalTableGenerator(imageFolder, false, true);
-    gen.setTranslator(getTranslator());
+    HierarchicalTableGenerator gen = new HierarchicalTableGenerator(new RenderingI18nContext(), imageFolder, false, true);
     TableModel model = initSpanningTable(gen, "", false, profile.getId());
     Set<String> processed = new HashSet<String>();
     SpanEntry span = buildSpanningTable("(focus)", "", profile, processed, onlyConstraints, constraintPrefix);
@@ -5267,6 +5265,32 @@ public class ProfileUtilities extends TranslatingUtilities {
 
   public void setDebug(boolean debug) {
     this.debug = debug;
+  }
+  
+
+  public static boolean isExtensionDefinition(StructureDefinition sd) {
+    return sd.getDerivation() == TypeDerivationRule.CONSTRAINT && sd.getType().equals("Extension");
+  }
+
+  public static boolean isSimpleExtension(StructureDefinition sd) {
+    if (!isExtensionDefinition(sd)) {
+      return false;
+    }
+    ElementDefinition value = sd.getSnapshot().getElementByPath("Extension.value");
+    return value != null && !value.isProhibited();
+  }
+
+  public static boolean isComplexExtension(StructureDefinition sd) {
+    if (!isExtensionDefinition(sd)) {
+      return false;
+    }
+    ElementDefinition value = sd.getSnapshot().getElementByPath("Extension.value");
+    return value == null || value.isProhibited();
+  }
+
+  public static boolean isModifierExtension(StructureDefinition sd) {
+    ElementDefinition defn = sd.getSnapshot().getElementByPath("Extension");
+    return defn.getIsModifier();
   }
 
 }

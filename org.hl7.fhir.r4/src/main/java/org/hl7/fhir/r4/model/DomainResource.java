@@ -422,6 +422,21 @@ public abstract class DomainResource extends Resource
   }
 
   @Override
+  public void removeChild(String name, Base value) throws FHIRException {
+    if (name.equals("text")) {
+      this.text = null;
+    } else if (name.equals("contained")) {
+      this.getContained().remove(castToResource(value));
+    } else if (name.equals("extension")) {
+      this.getExtension().remove(castToExtension(value));
+    } else if (name.equals("modifierExtension")) {
+      this.getModifierExtension().remove(castToExtension(value));
+    } else
+      super.removeChild(name, value);
+    
+  }
+
+  @Override
   public Base makeProperty(int hash, String name) throws FHIRException {
     switch (hash) {
     case 3556653:
@@ -562,6 +577,15 @@ public abstract class DomainResource extends Resource
       org.apache.commons.lang3.Validate.isTrue(retVal.size() == 1, "Url " + theUrl + " must have only one match");
       return retVal.get(0);
     }
+  }
+
+  public Resource getContained(String reference) {
+    for (Resource c : getContained()) {
+      if (reference.equals("#"+c.getId())) {
+        return c;
+      }
+    }
+    return null;
   }
 
 // end addition

@@ -1,5 +1,7 @@
 package org.hl7.fhir.r5.test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import java.io.IOException;
 import java.util.List;
 
@@ -8,17 +10,15 @@ import org.hl7.fhir.r5.context.SimpleWorkerContext;
 import org.hl7.fhir.r5.elementmodel.Element;
 import org.hl7.fhir.r5.elementmodel.Manager;
 import org.hl7.fhir.r5.elementmodel.Manager.FhirFormat;
+import org.hl7.fhir.r5.fhirpath.FHIRPathEngine;
 import org.hl7.fhir.r5.model.Base;
 import org.hl7.fhir.r5.model.Coding;
 import org.hl7.fhir.r5.model.StructureMap;
 import org.hl7.fhir.r5.model.StructureMap.StructureMapGroupRuleTargetComponent;
 import org.hl7.fhir.r5.test.utils.TestingUtilities;
-import org.hl7.fhir.r5.utils.FHIRPathEngine;
 import org.hl7.fhir.r5.utils.structuremap.ITransformerServices;
 import org.hl7.fhir.r5.utils.structuremap.StructureMapUtilities;
 import org.hl7.fhir.utilities.npm.FilesystemPackageCacheManager;
-import org.hl7.fhir.utilities.npm.ToolsVersion;
-import org.hl7.fhir.utilities.npm.FilesystemPackageCacheManager.FilesystemPackageCacheMode;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -29,7 +29,7 @@ public class StructureMapUtilitiesTest implements ITransformerServices {
 
   @BeforeAll
   static public void setUp() throws Exception {
-    FilesystemPackageCacheManager pcm = new FilesystemPackageCacheManager(org.hl7.fhir.utilities.npm.FilesystemPackageCacheManager.FilesystemPackageCacheMode.USER);
+    FilesystemPackageCacheManager pcm = new FilesystemPackageCacheManager.Builder().build();
     context = TestingUtilities.getWorkerContext(pcm.loadPackage("hl7.fhir.r4.core", "4.0.1"));
   }
 
@@ -58,10 +58,23 @@ public class StructureMapUtilitiesTest implements ITransformerServices {
     Assertions.assertEquals("2147483647",fp.evaluateToString(target, "extension[2].value"));
     Assertions.assertEquals("2147483647",fp.evaluateToString(target, "extension[3].value"));
   }
+  
+  @Test
+  public void testDateOpVariables() throws IOException, FHIRException {
+    StructureMapUtilities scu = new StructureMapUtilities(context, this);
+    String fileMap = TestingUtilities.loadTestResource("r5", "structure-mapping", "qr2patfordates.map");
+    Element source = Manager.parseSingle(context, TestingUtilities.loadTestResourceStream("r5", "structure-mapping", "qrext.json"), FhirFormat.JSON);
+    StructureMap structureMap = scu.parse(fileMap, "qr2patfordates");
+    Element target = Manager.build(context, scu.getTargetType(structureMap));
+    scu.transform(null, source, structureMap, target);
+    FHIRPathEngine fp = new FHIRPathEngine(context);
+    assertEquals("2023-10-26", fp.evaluateToString(target, "birthDate"));
+    assertEquals("2023-09-20T13:19:13.502Z", fp.evaluateToString(target, "deceased"));
+  }
 
   private void assertSerializeDeserialize(StructureMap structureMap) {
     Assertions.assertEquals("syntax", structureMap.getName());
-    Assertions.assertEquals("Title of this map\r\nAuthor", structureMap.getDescription());
+    Assertions.assertEquals("description", structureMap.getDescription());
     Assertions.assertEquals("http://github.com/FHIR/fhir-test-cases/r5/fml/syntax", structureMap.getUrl());
     Assertions.assertEquals("Patient", structureMap.getStructure().get(0).getAlias());
     Assertions.assertEquals("http://hl7.org/fhir/StructureDefinition/Patient", structureMap.getStructure().get(0).getUrl());

@@ -9,6 +9,7 @@ import java.util.Objects;
 
 import org.hl7.fhir.r5.terminologies.JurisdictionUtilities;
 import org.hl7.fhir.r5.utils.validation.BundleValidationRule;
+import org.hl7.fhir.r5.utils.validation.constants.BestPracticeWarningLevel;
 import org.hl7.fhir.utilities.VersionUtilities;
 import org.hl7.fhir.utilities.settings.FhirSettings;
 import org.hl7.fhir.validation.cli.services.ValidatorWatchMode;
@@ -55,6 +56,8 @@ public class CliContext {
   private HtmlInMarkdownCheck htmlInMarkdownCheck = HtmlInMarkdownCheck.WARNING;
   @JsonProperty("allowDoubleQuotesInFHIRPath")  
   private boolean allowDoubleQuotesInFHIRPath = false;
+  @JsonProperty("disableDefaultResourceFetcher")
+  private boolean disableDefaultResourceFetcher = false;
   @JsonProperty("checkIPSCodes")  
   private boolean checkIPSCodes;
   @JsonProperty("langTransform")
@@ -85,6 +88,8 @@ public class CliContext {
   private String snomedCT = "900000000000207008";
   @JsonProperty("targetVer")
   private String targetVer = null;
+  @JsonProperty("noEcosystem")
+  private boolean noEcosystem = false;
 
   @JsonProperty("extensions")
   private List<String> extensions = new ArrayList<String>();
@@ -130,8 +135,8 @@ public class CliContext {
 
   @JsonProperty("outputStyle")
   private String outputStyle = null;
-  
-  // TODO: Mark what goes here?
+
+  @JsonProperty("bundleValidationRules")
   private List<BundleValidationRule> bundleValidationRules = new ArrayList<>();
 
   @JsonProperty("jurisdiction")
@@ -152,6 +157,9 @@ public class CliContext {
   
   @JsonProperty("watchSettleTime")
   private int watchSettleTime = 100;
+  
+  @JsonProperty("bestPracticeLevel")
+  private BestPracticeWarningLevel bestPracticeLevel = BestPracticeWarningLevel.Warning;
   
 
   @JsonProperty("map")
@@ -187,9 +195,15 @@ public class CliContext {
     return this;
   }
 
-  // TODO: Mark what goes here?
+  @JsonProperty("bundleValidationRules")
   public List<BundleValidationRule> getBundleValidationRules() {
    return bundleValidationRules;
+  }
+
+  @JsonProperty("bundleValidationRules")
+  public CliContext setBundleValidationRules(List<BundleValidationRule> bundleValidationRules) {
+    this.bundleValidationRules = bundleValidationRules;
+    return this;
   }
 
   public CliContext addIg(String ig) {
@@ -230,6 +244,17 @@ public class CliContext {
   @JsonProperty("txServer")
   public CliContext setTxServer(String txServer) {
     this.txServer = txServer;
+    return this;
+  }
+
+  @JsonProperty("noEcosystem")
+  public boolean getNoEcosystem() {
+    return noEcosystem;
+  }
+
+  @JsonProperty("noEcosystem")
+  public CliContext setNoEcosystem(boolean noEcosystem) {
+    this.noEcosystem = noEcosystem;
     return this;
   }
 
@@ -318,13 +343,28 @@ public class CliContext {
     this.allowDoubleQuotesInFHIRPath = allowDoubleQuotesInFHIRPath;
   }
 
+  @JsonProperty("disableDefaultResourceFetcher")
+  public boolean isDisableDefaultResourceFetcher() {
+    return disableDefaultResourceFetcher;
+  }
+
+  @JsonProperty("disableDefaultResourceFetcher")
+  public CliContext setDisableDefaultResourceFetcher(boolean disableDefaultResourceFetcher) {
+    this.disableDefaultResourceFetcher = disableDefaultResourceFetcher;
+    return this;
+  }
+
+  @JsonProperty("checkIPSCodes")
   public boolean isCheckIPSCodes() {
     return checkIPSCodes;
   }
 
-  public void setCheckIPSCodes(boolean checkIPSCodes) {
+  @JsonProperty("checkIPSCodes")
+  public CliContext setCheckIPSCodes(boolean checkIPSCodes) {
     this.checkIPSCodes = checkIPSCodes;
+    return this;
   }
+
 
   @JsonProperty("locale")
   public String getLanguageCode() {
@@ -777,6 +817,7 @@ public class CliContext {
       Objects.equals(jurisdiction, that.jurisdiction) &&
       Objects.equals(locations, that.locations) &&
       Objects.equals(watchMode, that.watchMode) &&
+      Objects.equals(bestPracticeLevel, that.bestPracticeLevel) &&
       Objects.equals(watchScanDelay, that.watchScanDelay) &&
       Objects.equals(watchSettleTime, that.watchSettleTime) ;
   }
@@ -785,7 +826,7 @@ public class CliContext {
   public int hashCode() {
     return Objects.hash(doNative, extensions, hintAboutNonMustSupport, recursive, doDebug, assumeValidRestReferences, canDoNative, noInternalCaching, 
             noExtensibleBindingMessages, noInvariants, displayWarnings, wantInvariantsInMessages, map, output, outputSuffix, htmlOutput, txServer, sv, txLog, txCache, mapLog, lang, srcLang, tgtLang, fhirpath, snomedCT,
-            targetVer, igs, questionnaireMode, level, profiles, sources, inputs, mode, locale, locations, crumbTrails, forPublication, showTimes, allowExampleUrls, outputStyle, jurisdiction, noUnicodeBiDiControlChars, watchMode, watchScanDelay, watchSettleTime,
+            targetVer, igs, questionnaireMode, level, profiles, sources, inputs, mode, locale, locations, crumbTrails, forPublication, showTimes, allowExampleUrls, outputStyle, jurisdiction, noUnicodeBiDiControlChars, watchMode, watchScanDelay, watchSettleTime, bestPracticeLevel,
             htmlInMarkdownCheck, allowDoubleQuotesInFHIRPath, checkIPSCodes);
   }
 
@@ -841,6 +882,7 @@ public class CliContext {
       ", allowDoubleQuotesInFHIRPath=" + allowDoubleQuotesInFHIRPath +
       ", checkIPSCodes=" + checkIPSCodes +
       ", watchMode=" + watchMode +
+      ", bestPracticeLevel=" + bestPracticeLevel +
       ", watchSettleTime=" + watchSettleTime +
       ", watchScanDelay=" + watchScanDelay +
       '}';
@@ -888,5 +930,16 @@ public class CliContext {
     this.watchSettleTime = watchSettleTime;
   }
   
-  
+
+  @JsonProperty("bestPracticeLevel")
+  public BestPracticeWarningLevel getBestPracticeLevel() {
+    return bestPracticeLevel;
+  }
+
+  @JsonProperty("bestPracticeLevel")
+  public CliContext setBestPracticeLevel(BestPracticeWarningLevel bestPracticeLevel) {
+    this.bestPracticeLevel = bestPracticeLevel;
+    return this;
+  }
+
 }

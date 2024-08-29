@@ -51,9 +51,12 @@ import org.hl7.fhir.r5.conformance.ElementRedirection;
 import org.hl7.fhir.r5.conformance.profile.ProfileUtilities.AllowUnknownProfile;
 import org.hl7.fhir.r5.conformance.profile.ProfileUtilities.ElementDefinitionCounter;
 import org.hl7.fhir.r5.context.IWorkerContext;
-import org.hl7.fhir.r5.context.IWorkerContext.ValidationResult;
 import org.hl7.fhir.r5.elementmodel.ObjectConverter;
 import org.hl7.fhir.r5.elementmodel.Property;
+import org.hl7.fhir.r5.fhirpath.ExpressionNode;
+import org.hl7.fhir.r5.fhirpath.FHIRPathEngine;
+import org.hl7.fhir.r5.fhirpath.ExpressionNode.Kind;
+import org.hl7.fhir.r5.fhirpath.ExpressionNode.Operation;
 import org.hl7.fhir.r5.model.Base;
 import org.hl7.fhir.r5.model.BooleanType;
 import org.hl7.fhir.r5.model.CanonicalType;
@@ -75,9 +78,6 @@ import org.hl7.fhir.r5.model.ElementDefinition.TypeRefComponent;
 import org.hl7.fhir.r5.model.Enumerations.BindingStrength;
 import org.hl7.fhir.r5.model.Enumerations.FHIRVersion;
 import org.hl7.fhir.r5.model.Enumerations.PublicationStatus;
-import org.hl7.fhir.r5.model.ExpressionNode;
-import org.hl7.fhir.r5.model.ExpressionNode.Kind;
-import org.hl7.fhir.r5.model.ExpressionNode.Operation;
 import org.hl7.fhir.r5.model.Extension;
 import org.hl7.fhir.r5.model.IdType;
 import org.hl7.fhir.r5.model.MarkdownType;
@@ -92,17 +92,18 @@ import org.hl7.fhir.r5.model.StructureDefinition.StructureDefinitionMappingCompo
 import org.hl7.fhir.r5.model.StructureDefinition.StructureDefinitionSnapshotComponent;
 import org.hl7.fhir.r5.model.StructureDefinition.TypeDerivationRule;
 import org.hl7.fhir.r5.model.UriType;
+import org.hl7.fhir.r5.model.UsageContext;
 import org.hl7.fhir.r5.model.ValueSet;
 import org.hl7.fhir.r5.model.ValueSet.ValueSetExpansionComponent;
 import org.hl7.fhir.r5.model.ValueSet.ValueSetExpansionContainsComponent;
 import org.hl7.fhir.r5.terminologies.expansion.ValueSetExpansionOutcome;
-import org.hl7.fhir.r5.utils.FHIRPathEngine;
+import org.hl7.fhir.r5.terminologies.utilities.ValidationResult;
 import org.hl7.fhir.r5.utils.ToolingExtensions;
-import org.hl7.fhir.r5.utils.TranslatingUtilities;
 import org.hl7.fhir.r5.utils.XVerExtensionManager;
 import org.hl7.fhir.r5.utils.XVerExtensionManager.XVerExtensionStatus;
 import org.hl7.fhir.r5.utils.formats.CSVWriter;
 import org.hl7.fhir.utilities.CommaSeparatedStringBuilder;
+import org.hl7.fhir.utilities.FhirPublication;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.VersionUtilities;
 import org.hl7.fhir.utilities.i18n.I18nConstants;
@@ -134,8 +135,11 @@ import org.hl7.fhir.utilities.xml.SchematronWriter.Section;
  * @author Grahame
  *
  */
-public class ProfileUtilities extends TranslatingUtilities {
+public class ProfileUtilities {
 
+  private static boolean suppressIgnorableExceptions;
+
+  
   public class ElementDefinitionCounter {
     int countMin = 0;
     int countMax = 0;
@@ -214,7 +218,14 @@ public class ProfileUtilities extends TranslatingUtilities {
     ALL_TYPES // allow any unknow profile
   }
 
-  private static final List<String> NON_INHERITED_ED_URLS = Arrays.asList(
+  /**
+   * These extensions are stripped in inherited profiles (and may be replaced by 
+   */
+  
+  public static final List<String> NON_INHERITED_ED_URLS = Arrays.asList(
+      "http://hl7.org/fhir/tools/StructureDefinition/binding-definition",
+      "http://hl7.org/fhir/tools/StructureDefinition/no-binding",
+      "http://hl7.org/fhir/StructureDefinition/elementdefinition-isCommonBinding",
       "http://hl7.org/fhir/StructureDefinition/structuredefinition-standards-status",  
       "http://hl7.org/fhir/StructureDefinition/structuredefinition-category",
       "http://hl7.org/fhir/StructureDefinition/structuredefinition-fmm",
@@ -225,11 +236,63 @@ public class ProfileUtilities extends TranslatingUtilities {
       "http://hl7.org/fhir/StructureDefinition/structuredefinition-normative-version",
       "http://hl7.org/fhir/tools/StructureDefinition/obligation-profile",
       "http://hl7.org/fhir/StructureDefinition/structuredefinition-standards-status-reason",
-      ToolingExtensions.EXT_SUMMARY,
+      ToolingExtensions.EXT_SUMMARY/*,
       ToolingExtensions.EXT_OBLIGATION_CORE,
-      ToolingExtensions.EXT_OBLIGATION_TOOLS);
+      ToolingExtensions.EXT_OBLIGATION_TOOLS*/);
 
+  public static final List<String> DEFAULT_INHERITED_ED_URLS = Arrays.asList(
+      "http://hl7.org/fhir/StructureDefinition/questionnaire-optionRestriction",
+      "http://hl7.org/fhir/StructureDefinition/questionnaire-referenceProfile",
+      "http://hl7.org/fhir/StructureDefinition/questionnaire-referenceResource",
+      "http://hl7.org/fhir/StructureDefinition/questionnaire-unitOption",
 
+      "http://hl7.org/fhir/StructureDefinition/mimeType");
+
+  /**
+   * These extensions are ignored when found in differentials
+   */  
+  public static final List<String> NON_OVERRIDING_ED_URLS = Arrays.asList(
+      "http://hl7.org/fhir/StructureDefinition/elementdefinition-translatable",
+      "http://hl7.org/fhir/tools/StructureDefinition/elementdefinition-json-name",
+      "http://hl7.org/fhir/tools/StructureDefinition/implied-string-prefix",
+      "http://hl7.org/fhir/tools/StructureDefinition/json-empty-behavior",
+      "http://hl7.org/fhir/tools/StructureDefinition/json-nullable",
+      "http://hl7.org/fhir/tools/StructureDefinition/json-primitive-choice",
+      "http://hl7.org/fhir/tools/StructureDefinition/json-property-key",
+      "http://hl7.org/fhir/tools/StructureDefinition/type-specifier",
+      "http://hl7.org/fhir/tools/StructureDefinition/xml-choice-group",
+      ToolingExtensions.EXT_XML_NAMESPACE, ToolingExtensions.EXT_XML_NAMESPACE_DEPRECATED,
+      ToolingExtensions.EXT_XML_NAME, ToolingExtensions.EXT_XML_NAME_DEPRECATED,
+      "http://hl7.org/fhir/StructureDefinition/elementdefinition-defaulttype"
+      );
+
+  /**
+   * When these extensions are found, they override whatever is set on the ancestor element 
+   */  
+  public static final List<String> OVERRIDING_ED_URLS = Arrays.asList(
+      "http://hl7.org/fhir/tools/StructureDefinition/elementdefinition-date-format",
+      ToolingExtensions.EXT_DATE_RULES,
+      "http://hl7.org/fhir/StructureDefinition/designNote",
+      "http://hl7.org/fhir/StructureDefinition/elementdefinition-allowedUnits",
+      "http://hl7.org/fhir/StructureDefinition/elementdefinition-question",
+      "http://hl7.org/fhir/StructureDefinition/entryFormat",
+      "http://hl7.org/fhir/StructureDefinition/maxDecimalPlaces",
+      "http://hl7.org/fhir/StructureDefinition/maxSize",
+      "http://hl7.org/fhir/StructureDefinition/minLength",
+      "http://hl7.org/fhir/StructureDefinition/questionnaire-choiceOrientation",
+      "http://hl7.org/fhir/StructureDefinition/questionnaire-displayCategory",
+      "http://hl7.org/fhir/StructureDefinition/questionnaire-hidden",
+      "http://hl7.org/fhir/StructureDefinition/questionnaire-itemControl",
+      "http://hl7.org/fhir/StructureDefinition/questionnaire-signatureRequired",
+      "http://hl7.org/fhir/StructureDefinition/questionnaire-sliderStepValue",
+      "http://hl7.org/fhir/StructureDefinition/questionnaire-supportLink",
+      "http://hl7.org/fhir/StructureDefinition/questionnaire-unit",
+      "http://hl7.org/fhir/StructureDefinition/questionnaire-unitValueSet",
+      "http://hl7.org/fhir/StructureDefinition/questionnaire-usageMode",
+      "http://hl7.org/fhir/StructureDefinition/structuredefinition-display-hint",
+      "http://hl7.org/fhir/StructureDefinition/structuredefinition-explicit-type-name"
+      );
+  
   public IWorkerContext getContext() {
     return this.context;
   }
@@ -361,7 +424,7 @@ public class ProfileUtilities extends TranslatingUtilities {
   private ProfileKnowledgeProvider pkp;
 //  private boolean igmode;
   private boolean exception;
-  private ValidationOptions terminologyServiceOptions = new ValidationOptions();
+  private ValidationOptions terminologyServiceOptions = new ValidationOptions(FhirPublication.R5);
   private boolean newSlicingProcessing;
   private String defWebRoot;
   private boolean autoFixSliceNames;
@@ -369,7 +432,7 @@ public class ProfileUtilities extends TranslatingUtilities {
   private boolean wantFixDifferentialFirstElementType;
   private Set<String> masterSourceFileNames;
   private Set<String> localFileNames;
-  private Map<ElementDefinition, SourcedChildDefinitions> childMapCache = new HashMap<>();
+  private Map<String, SourcedChildDefinitions> childMapCache = new HashMap<>();
   private AllowUnknownProfile allowUnknownProfile = AllowUnknownProfile.ALL_TYPES;
   private MappingMergeModeOption mappingMergeMode = MappingMergeModeOption.APPEND;
   private boolean forPublication;
@@ -415,8 +478,9 @@ public class ProfileUtilities extends TranslatingUtilities {
   }
 
   public SourcedChildDefinitions getChildMap(StructureDefinition profile, ElementDefinition element) throws DefinitionException {
-    if (childMapCache.containsKey(element)) {
-      return childMapCache.get(element);
+    String cacheKey = "cm."+profile.getVersionedUrl()+"#"+(element.hasId() ? element.getId() : element.getPath());
+    if (childMapCache.containsKey(cacheKey)) {
+      return childMapCache.get(cacheKey);
     }
     StructureDefinition src = profile;
     if (element.getContentReference() != null) {
@@ -460,7 +524,7 @@ public class ProfileUtilities extends TranslatingUtilities {
           break;
       }
       SourcedChildDefinitions result  = new SourcedChildDefinitions(src, res);
-      childMapCache.put(element, result);
+      childMapCache.put(cacheKey, result);
       return result;
     }
   }
@@ -636,9 +700,11 @@ public class ProfileUtilities extends TranslatingUtilities {
         throw new DefinitionException(context.formatMessage(I18nConstants.UNABLE_TO_FIND_BASE__FOR_, base.getBaseDefinition(), base.getUrl()));
       checkNotGenerating(sdb, "an extension base");
       generateSnapshot(sdb, base, base.getUrl(), (sdb.hasWebPath()) ? Utilities.extractBaseUrl(sdb.getWebPath()) : webUrl, base.getName());
-
     }
     fixTypeOfResourceId(base);
+    if (base.hasExtension(ToolingExtensions.EXT_TYPE_PARAMETER)) {
+      checkTypeParameters(base, derived);
+    }
     
     if (snapshotStack.contains(derived.getUrl())) {
       throw new DefinitionException(context.formatMessage(I18nConstants.CIRCULAR_SNAPSHOT_REFERENCES_DETECTED_CANNOT_GENERATE_SNAPSHOT_STACK__, snapshotStack.toString()));
@@ -907,6 +973,31 @@ public class ProfileUtilities extends TranslatingUtilities {
     } finally {
       derived.clearUserData("profileutils.snapshot.generating");
       snapshotStack.remove(derived.getUrl());
+    }
+    derived.setUserData("profileutils.snapshot.generated", true); // used by the publisher
+  }
+
+
+  private void checkTypeParameters(StructureDefinition base, StructureDefinition derived) {
+    String bt = ToolingExtensions.readStringExtension(base, ToolingExtensions.EXT_TYPE_PARAMETER);
+    if (!derived.hasExtension(ToolingExtensions.EXT_TYPE_PARAMETER)) {
+      throw new DefinitionException(context.formatMessage(I18nConstants.SD_TYPE_PARAMETER_MISSING, base.getVersionedUrl(), bt, derived.getVersionedUrl()));
+    }
+    String dt = ToolingExtensions.readStringExtension(derived, ToolingExtensions.EXT_TYPE_PARAMETER);
+    StructureDefinition bsd = context.fetchTypeDefinition(bt);
+    StructureDefinition dsd = context.fetchTypeDefinition(dt);
+    if (bsd == null) {
+      throw new DefinitionException(context.formatMessage(I18nConstants.SD_TYPE_PARAMETER_UNKNOWN, base.getVersionedUrl(), bt));
+    }
+    if (dsd == null) {
+      throw new DefinitionException(context.formatMessage(I18nConstants.SD_TYPE_PARAMETER_UNKNOWN, derived.getVersionedUrl(), dt));
+    }
+    StructureDefinition t = dsd;
+    while (t != bsd && t != null) {
+      t = context.fetchResource(StructureDefinition.class, t.getBaseDefinition());
+    }
+    if (t == null) {
+      throw new DefinitionException(context.formatMessage(I18nConstants.SD_TYPE_PARAMETER_INVALID, base.getVersionedUrl(), bt, derived.getVersionedUrl(), dt));
     }
   }
 
@@ -1931,7 +2022,7 @@ public class ProfileUtilities extends TranslatingUtilities {
           if (Character.isWhitespace(ch)) {
             // found the end of the processible link:
             String url = markdown.substring(linkLeft, i);
-            if (isLikelySourceURLReference(url, resourceNames, baseFilenames, localFilenames)) {
+            if (isLikelySourceURLReference(url, resourceNames, baseFilenames, localFilenames, webUrl)) {
               b.append(basePath);
               if (!Utilities.noString(basePath) && !basePath.endsWith("/")) {
                 b.append("/");
@@ -1961,7 +2052,7 @@ public class ProfileUtilities extends TranslatingUtilities {
               // This code is trying to guess which relative references are actually to the
               // base specification.
               // 
-              if (isLikelySourceURLReference(url, resourceNames, baseFilenames, localFilenames)) {
+              if (isLikelySourceURLReference(url, resourceNames, baseFilenames, localFilenames, webUrl)) {
                 b.append("](");
                 b.append(basePath);
                 if (!Utilities.noString(basePath) && !basePath.endsWith("/")) {
@@ -2007,28 +2098,33 @@ public class ProfileUtilities extends TranslatingUtilities {
   }
 
 
-  private static boolean isLikelySourceURLReference(String url, List<String> resourceNames, Set<String> baseFilenames, Set<String> localFilenames) {
-    if (resourceNames != null) {
-      for (String n : resourceNames) {
-        if (n != null && url.startsWith(n.toLowerCase()+".html")) {
-          return true;
-        }
-        if (n != null && url.startsWith(n.toLowerCase()+"-definitions.html")) {
-          return true;
+  private static boolean isLikelySourceURLReference(String url, List<String> resourceNames, Set<String> baseFilenames, Set<String> localFilenames, String baseUrl) {
+    if (url == null) {
+      return false;
+    }
+    if (baseUrl != null && !baseUrl.startsWith("http://hl7.org/fhir/R")) {
+      if (resourceNames != null) {
+        for (String n : resourceNames) {
+          if (n != null && url.startsWith(n.toLowerCase()+".html")) {
+            return true;
+          }
+          if (n != null && url.startsWith(n.toLowerCase()+"-definitions.html")) {
+            return true;
+          }
         }
       }
-    }
-    if (localFilenames != null) {
-      for (String n : localFilenames) {
-        if (n != null && url.startsWith(n.toLowerCase())) {
-          return false;
+      if (localFilenames != null) {
+        for (String n : localFilenames) {
+          if (n != null && url.startsWith(n.toLowerCase())) {
+            return false;
+          }
         }
       }
-    }
-    if (baseFilenames != null) {
-      for (String n : baseFilenames) {
-        if (n != null && url.startsWith(n.toLowerCase())) {
-          return true;
+      if (baseFilenames != null) {
+        for (String n : baseFilenames) {
+          if (n != null && url.startsWith(n.toLowerCase())) {
+            return true;
+          }
         }
       }
     }
@@ -2300,20 +2396,12 @@ public class ProfileUtilities extends TranslatingUtilities {
       dest.getExtension().remove(elist.get(1));
     }
     
-    for (Extension ext : source.getExtension()) {
-      if (!Utilities.existsInList(ext.getUrl(), NON_INHERITED_ED_URLS) && !dest.hasExtension(ext.getUrl())) {
-        dest.getExtension().add(ext.copy());
-      }      
-    }
-    for (Extension ext : source.getExtension()) {
-      if (Utilities.existsInList(ext.getUrl(), ToolingExtensions.EXT_OBLIGATION_CORE, ToolingExtensions.EXT_OBLIGATION_TOOLS)) {
-        dest.getExtension().add(ext.copy());
-      }      
-    }
+    updateExtensionsFromDefinition(dest, source);
+
     for (ElementDefinition ed : obligationProfileElements) {
       for (Extension ext : ed.getExtension()) {
         if (Utilities.existsInList(ext.getUrl(), ToolingExtensions.EXT_OBLIGATION_CORE, ToolingExtensions.EXT_OBLIGATION_TOOLS)) {
-          dest.getExtension().add(ext.copy());
+          dest.getExtension().add(new Extension(ToolingExtensions.EXT_OBLIGATION_CORE, ext.getValue().copy()));
         }      
       }
     }
@@ -2350,6 +2438,9 @@ public class ProfileUtilities extends TranslatingUtilities {
       }
     }
     if (profile != null) {
+      if (profile.getSnapshot().getElement().isEmpty()) {
+        throw new DefinitionException(context.formatMessage(I18nConstants.SNAPSHOT_IS_EMPTY, profile.getVersionedUrl()));
+      }
       ElementDefinition e = profile.getSnapshot().getElement().get(0);
       String webroot = profile.getUserString("webroot");
 
@@ -2499,18 +2590,36 @@ public class ProfileUtilities extends TranslatingUtilities {
             derived.getPattern().setUserData(UD_DERIVATION_EQUALS, true);
       }
 
+      List<ElementDefinitionExampleComponent> toDelB = new ArrayList<>();
+      List<ElementDefinitionExampleComponent> toDelD = new ArrayList<>();
       for (ElementDefinitionExampleComponent ex : derived.getExample()) {
-        boolean found = false;
-        for (ElementDefinitionExampleComponent exS : base.getExample())
-          if (Base.compareDeep(ex, exS, false))
-            found = true;
-        if (!found)
-          base.addExample(ex.copy());
-        else if (trimDifferential)
-          derived.getExample().remove(ex);
-        else
-          ex.setUserData(UD_DERIVATION_EQUALS, true);
+        boolean delete = ex.hasExtension(ToolingExtensions.EXT_ED_SUPPRESS);
+        if (delete && "$all".equals(ex.getLabel())) {
+          toDelB.addAll(base.getExample());
+        } else {
+          boolean found = false;
+          for (ElementDefinitionExampleComponent exS : base.getExample()) {
+            if (Base.compareDeep(ex.getLabel(), exS.getLabel(), false) && Base.compareDeep(ex.getValue(), exS.getValue(), false)) {
+              if (delete) {
+                toDelB.add(exS);
+              } else {
+                found = true;
+              }
+            }
+          }
+          if (delete) {
+            toDelD.add(ex);
+          } else if (!found) {
+            base.addExample(ex.copy());
+          } else if (trimDifferential) {
+            derived.getExample().remove(ex);
+          } else {
+            ex.setUserData(UD_DERIVATION_EQUALS, true);
+          }
+        }
       }
+      base.getExample().removeAll(toDelB);
+      derived.getExample().removeAll(toDelD);
 
       if (derived.hasMaxLengthElement()) {
         if (!Base.compareDeep(derived.getMaxLengthElement(), base.getMaxLengthElement(), false))
@@ -2611,6 +2720,7 @@ public class ProfileUtilities extends TranslatingUtilities {
         hasBinding = hasBinding || ed.hasBinding();
       }
       if (hasBinding) {
+        updateExtensionsFromDefinition(dest.getBinding(), source.getBinding());
         ElementDefinitionBindingComponent binding = derived.getBinding();
         for (ElementDefinition ed : obligationProfileElements) {
           for (Extension ext : ed.getBinding().getExtension()) {
@@ -2637,8 +2747,8 @@ public class ProfileUtilities extends TranslatingUtilities {
             messages.add(new ValidationMessage(Source.ProfileValidator, ValidationMessage.IssueType.BUSINESSRULE, pn+"."+derived.getPath(), "illegal attempt to change the binding on "+derived.getPath()+" from "+base.getBinding().getStrength().toCode()+" to "+derived.getBinding().getStrength().toCode(), ValidationMessage.IssueSeverity.ERROR));
 //            throw new DefinitionException("StructureDefinition "+pn+" at "+derived.getPath()+": illegal attempt to change a binding from "+base.getBinding().getStrength().toCode()+" to "+derived.getBinding().getStrength().toCode());
           else if (base.hasBinding() && derived.hasBinding() && base.getBinding().getStrength() == BindingStrength.REQUIRED && base.getBinding().hasValueSet() && derived.getBinding().hasValueSet()) {
-            ValueSet baseVs = context.fetchResource(ValueSet.class, base.getBinding().getValueSet(), srcSD);
-            ValueSet contextVs = context.fetchResource(ValueSet.class, derived.getBinding().getValueSet(), derivedSrc);
+            ValueSet baseVs = context.findTxResource(ValueSet.class, base.getBinding().getValueSet(), srcSD);
+            ValueSet contextVs = context.findTxResource(ValueSet.class, derived.getBinding().getValueSet(), derivedSrc);
             if (baseVs == null) {
               messages.add(new ValidationMessage(Source.ProfileValidator, ValidationMessage.IssueType.BUSINESSRULE, pn+"."+base.getPath(), "Binding "+base.getBinding().getValueSet()+" could not be located", ValidationMessage.IssueSeverity.WARNING));
             } else if (contextVs == null) {
@@ -2686,13 +2796,22 @@ public class ProfileUtilities extends TranslatingUtilities {
           if (d.hasValueSet()) {
             nb.setValueSet(d.getValueSet());
           }
+          for (ElementDefinitionBindingAdditionalComponent ab : d.getAdditional()) {
+            ElementDefinitionBindingAdditionalComponent eab = getMatchingAdditionalBinding(nb, ab);
+            if (eab != null) {
+              mergeAdditionalBinding(eab, ab);
+            } else {
+              nb.getAdditional().add(ab);
+            }
+          }
           base.setBinding(nb); 
         } else if (trimDifferential)
           derived.setBinding(null);
         else
           derived.getBinding().setUserData(UD_DERIVATION_EQUALS, true);
-      } // else if (base.hasBinding() && doesn't have bindable type )
-        //  base
+      } else if (base.hasBinding()) {
+         base.getBinding().getExtension().removeIf(ext -> Utilities.existsInList(ext.getUrl(), ProfileUtilities.NON_INHERITED_ED_URLS));
+      }
 
       if (derived.hasIsSummaryElement()) {
         if (!Base.compareDeep(derived.getIsSummaryElement(), base.getIsSummaryElement(), false)) {
@@ -2785,6 +2904,58 @@ public class ProfileUtilities extends TranslatingUtilities {
     //updateURLs(url, webUrl, dest);
   }
 
+  private void updateExtensionsFromDefinition(Element dest, Element source) {
+    dest.getExtension().removeIf(ext -> Utilities.existsInList(ext.getUrl(), NON_INHERITED_ED_URLS) || (Utilities.existsInList(ext.getUrl(), DEFAULT_INHERITED_ED_URLS) && source.hasExtension(ext.getUrl())));
+
+    for (Extension ext : source.getExtension()) {
+      if (!dest.hasExtension(ext.getUrl())) {
+        dest.getExtension().add(ext.copy());
+      } else if (Utilities.existsInList(ext.getUrl(), NON_OVERRIDING_ED_URLS)) {
+        // do nothing
+      } else if (Utilities.existsInList(ext.getUrl(), OVERRIDING_ED_URLS)) {
+        dest.getExtensionByUrl(ext.getUrl()).setValue(ext.getValue());
+      } else {
+        dest.getExtension().add(ext.copy());  
+      }
+    }
+  }
+
+  private void mergeAdditionalBinding(ElementDefinitionBindingAdditionalComponent dest, ElementDefinitionBindingAdditionalComponent source) {
+    for (UsageContext t : source.getUsage()) {
+      if (!hasUsage(dest, t)) {
+        dest.addUsage(t);
+      }
+    }
+    if (source.getAny()) {
+      source.setAny(true);
+    }
+    if (source.hasShortDoco()) {
+      dest.setShortDoco(source.getShortDoco());
+    }
+    if (source.hasDocumentation()) {
+      dest.setDocumentation(source.getDocumentation());
+    }
+    
+  }
+
+  private boolean hasUsage(ElementDefinitionBindingAdditionalComponent dest, UsageContext tgt) {
+    for (UsageContext t : dest.getUsage()) {
+      if (t.getCode() != null && t.getCode().matches(tgt.getCode()) && t.getValue() != null && t.getValue().equals(tgt.getValue())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private ElementDefinitionBindingAdditionalComponent getMatchingAdditionalBinding(ElementDefinitionBindingComponent nb,ElementDefinitionBindingAdditionalComponent ab) {
+    for (ElementDefinitionBindingAdditionalComponent t : nb.getAdditional()) {
+      if (t.getValueSet() != null && t.getValueSet().equals(ab.getValueSet()) && t.getPurpose() == ab.getPurpose()) {
+        return t;
+      }
+    }
+    return null;
+  }
+
   private void mergeExtensions(Element tgt, Element src) {
      tgt.getExtension().addAll(src.getExtension());
   }
@@ -2839,10 +3010,11 @@ public class ProfileUtilities extends TranslatingUtilities {
     boolean ok = false;
     CommaSeparatedStringBuilder b = new CommaSeparatedStringBuilder();
     String t = ts.getWorkingCode();
+    String tDesc = ts.toString();
     for (TypeRefComponent td : base.getType()) {;
       boolean matchType = false;
       String tt = td.getWorkingCode();
-      b.append(tt);
+      b.append(td.toString());
       if (td.hasCode() && (tt.equals(t))) {
         matchType = true;
       }
@@ -2869,20 +3041,7 @@ public class ProfileUtilities extends TranslatingUtilities {
           // check that any derived target has a reference chain back to one of the base target profiles
           for (UriType u : ts.getTargetProfile()) {
             String url = u.getValue();
-            boolean tgtOk = !td.hasTargetProfile() || td.hasTargetProfile(url);
-            while (url != null && !tgtOk) {
-              StructureDefinition sd = context.fetchResource(StructureDefinition.class, url);
-              if (sd == null) {
-                if (messages != null) {
-                  messages.add(new ValidationMessage(Source.InstanceValidator, IssueType.BUSINESSRULE, path, "Cannot check whether the target profile " + url + " on "+derived.getPath()+" is valid constraint on the base because it is not known", IssueSeverity.WARNING));
-                }
-                url = null;
-                tgtOk = true; // suppress error message
-              } else {
-                url = sd.getBaseDefinition();
-                tgtOk = td.hasTargetProfile(url);
-              }
-            }
+            boolean tgtOk = !td.hasTargetProfile() || sdConformsToTargets(path, derived.getPath(), url, td);            
             if (tgtOk) {
               ok = true;
             } else {
@@ -2898,11 +3057,34 @@ public class ProfileUtilities extends TranslatingUtilities {
         }
       }
     }
-    if (!ok) {
-      throw new DefinitionException(context.formatMessage(I18nConstants.STRUCTUREDEFINITION__AT__ILLEGAL_CONSTRAINED_TYPE__FROM__IN_, purl, derived.getPath(), t, b.toString(), srcSD.getUrl()));
+    if (!ok && !isSuppressIgnorableExceptions()) {
+      throw new DefinitionException(context.formatMessage(I18nConstants.STRUCTUREDEFINITION__AT__ILLEGAL_CONSTRAINED_TYPE__FROM__IN_, purl, derived.getPath(), tDesc, b.toString(), srcSD.getUrl()));
     }
   }
 
+
+  private boolean sdConformsToTargets(String path, String dPath, String url, TypeRefComponent td) {
+    if (td.hasTargetProfile(url)) {
+      return true;
+    }
+    StructureDefinition sd = context.fetchResource(StructureDefinition.class, url);
+    if (sd == null) {
+      if (messages != null) {
+        messages.add(new ValidationMessage(Source.InstanceValidator, IssueType.BUSINESSRULE, path, "Cannot check whether the target profile " + url + " on "+dPath+" is valid constraint on the base because it is not known", IssueSeverity.WARNING));
+      }
+      return true;
+    } else {
+      if (sd.hasBaseDefinition() && sdConformsToTargets(path, dPath, sd.getBaseDefinition(), td)) {
+        return true;
+      }
+      for (Extension ext : sd.getExtensionsByUrl(ToolingExtensions.EXT_SD_IMPOSE_PROFILE)) {
+        if (sdConformsToTargets(path, dPath, ext.getValueCanonicalType().asStringValue(), td)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
 
   private void checkTypeOk(ElementDefinition dest, String ft, StructureDefinition sd, String fieldName) {
     boolean ok = false;
@@ -3292,10 +3474,12 @@ public class ProfileUtilities extends TranslatingUtilities {
 
     @Override
     public int compare(ElementDefinitionHolder o1, ElementDefinitionHolder o2) {
-      if (o1.getBaseIndex() == 0)
+      if (o1.getBaseIndex() == 0) {
         o1.setBaseIndex(find(o1.getSelf().getPath(), true));
-      if (o2.getBaseIndex() == 0)
+      }
+      if (o2.getBaseIndex() == 0) {
         o2.setBaseIndex(find(o2.getSelf().getPath(), true));
+      }
       return o1.getBaseIndex() - o2.getBaseIndex();
     }
 
@@ -3388,11 +3572,6 @@ public class ProfileUtilities extends TranslatingUtilities {
       }
       paths.add(elt.getPath());
     }
-    if(!hasSlicing) {
-      // if Differential does not have slicing then safe to pre-sort the list
-      // so elements and subcomponents are together
-      Collections.sort(diffList, new ElementNameCompare());
-    }
 
     processElementsIntoTree(edh, i, diff.getDifferential().getElement());
 
@@ -3415,7 +3594,8 @@ public class ProfileUtilities extends TranslatingUtilities {
 
   private void compareDiffs(List<ElementDefinition> diffList, List<ElementDefinition> newDiff, List<String> errors) {
     if (diffList.size() != newDiff.size()) {
-      errors.add("The diff list size changed when sorting - was "+diffList.size()+" is now "+newDiff.size());
+      errors.add("The diff list size changed when sorting - was "+diffList.size()+" is now "+newDiff.size()+
+          " ["+CommaSeparatedStringBuilder.buildObjects(diffList)+"]/["+CommaSeparatedStringBuilder.buildObjects(newDiff)+"]");
     } else {
       for (int i = 0; i < Integer.min(diffList.size(), newDiff.size()); i++) {
         ElementDefinition e = diffList.get(i);
@@ -4435,9 +4615,17 @@ public class ProfileUtilities extends TranslatingUtilities {
     return value != null && !value.isProhibited();
   }
 
+  public static boolean isComplexExtension(StructureDefinition sd) {
+    if (!isExtensionDefinition(sd)) {
+      return false;
+    }
+    ElementDefinition value = sd.getSnapshot().getElementByPath("Extension.value");
+    return value == null || value.isProhibited();
+  }
+
   public static boolean isModifierExtension(StructureDefinition sd) {
     ElementDefinition defn = sd.getSnapshot().getElementByPath("Extension");
-    return defn.getIsModifier();
+    return defn != null && defn.getIsModifier();
   }
 
   public boolean isForPublication() {
@@ -4454,6 +4642,31 @@ public class ProfileUtilities extends TranslatingUtilities {
 
   public static boolean isResourceBoundary(ElementDefinition ed) {
     return ed.getType().size() == 1 && "Resource".equals(ed.getTypeFirstRep().getCode());
+  }
+
+  public static boolean isSuppressIgnorableExceptions() {
+    return suppressIgnorableExceptions;
+  }
+
+  public static void setSuppressIgnorableExceptions(boolean suppressIgnorableExceptions) {
+    ProfileUtilities.suppressIgnorableExceptions = suppressIgnorableExceptions;
+  }
+
+  public void setMessages(List<ValidationMessage> messages) {
+    this.messages = messages; 
+  }
+
+  private Map<String, List<Property>> propertyCache = new HashMap<>();
+  
+  public Map<String, List<Property>> getCachedPropertyList() {
+    return propertyCache;
+  }
+
+  public void checkExtensions(ElementDefinition outcome) {
+    outcome.getExtension().removeIf(ext -> Utilities.existsInList(ext.getUrl(), ProfileUtilities.NON_INHERITED_ED_URLS));
+    if (outcome.hasBinding()) {
+      outcome.getBinding().getExtension().removeIf(ext -> Utilities.existsInList(ext.getUrl(), ProfileUtilities.NON_INHERITED_ED_URLS));      
+    }
   }
 
 }

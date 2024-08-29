@@ -2,7 +2,7 @@
 {"code" : {
   "system" : "http://unitsofmeasure.org",
   "code" : "[lb_av]"
-}, "valueSet" :null, "langs":"", "useServer":"true", "useClient":"true", "guessSystem":"false", "valueSetMode":"ALL_CHECKS", "displayWarningMode":"false", "versionFlexible":"true", "profile": {
+}, "valueSet" :null, "langs":"", "useServer":"true", "useClient":"true", "guessSystem":"false", "activeOnly":"false", "membershipOnly":"false", "displayWarningMode":"false", "versionFlexible":"true", "profile": {
   "resourceType" : "Parameters",
   "parameter" : [{
     "name" : "profile-url",
@@ -14,6 +14,7 @@ v: {
   "code" : "[lb_av]",
   "system" : "http://unitsofmeasure.org",
   "version" : "2.0.1",
+  "server" : "http://tx-dev.fhir.org/r2",
   "issues" : {
   "resourceType" : "OperationOutcome"
 }
@@ -23,7 +24,7 @@ v: {
 {"code" : {
   "system" : "http://unitsofmeasure.org",
   "code" : "[lb_av]"
-}, "valueSet" :null, "langs":"", "useServer":"true", "useClient":"true", "guessSystem":"false", "valueSetMode":"ALL_CHECKS", "displayWarningMode":"false", "versionFlexible":"false", "profile": {
+}, "valueSet" :null, "langs":"", "useServer":"true", "useClient":"true", "guessSystem":"false", "activeOnly":"false", "membershipOnly":"false", "displayWarningMode":"false", "versionFlexible":"false", "profile": {
   "resourceType" : "Parameters",
   "parameter" : [{
     "name" : "profile-url",
@@ -35,6 +36,7 @@ v: {
   "code" : "[lb_av]",
   "system" : "http://unitsofmeasure.org",
   "version" : "2.0.1",
+  "server" : "http://tx-dev.fhir.org/r2",
   "unknown-systems" : "",
   "issues" : {
   "resourceType" : "OperationOutcome"

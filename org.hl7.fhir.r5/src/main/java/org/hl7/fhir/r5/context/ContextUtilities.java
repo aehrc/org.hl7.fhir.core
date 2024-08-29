@@ -42,12 +42,12 @@ public class ContextUtilities implements ProfileKnowledgeProvider {
 
   private IWorkerContext context;
   private boolean suppressDebugMessages;
-  private boolean ignoreProfileErrors;
   private XVerExtensionManager xverManager;
   private Map<String, String> oidCache = new HashMap<>();
   private List<StructureDefinition> allStructuresList = new ArrayList<StructureDefinition>();
   private List<String> canonicalResourceNames;
   private List<String> concreteResourceNames;
+  private Set<String> concreteResourceNameSet;
   
   public ContextUtilities(IWorkerContext context) {
     super();
@@ -61,14 +61,7 @@ public class ContextUtilities implements ProfileKnowledgeProvider {
   public void setSuppressDebugMessages(boolean suppressDebugMessages) {
     this.suppressDebugMessages = suppressDebugMessages;
   }
-  public boolean isIgnoreProfileErrors() {
-    return ignoreProfileErrors;
-  }
-
-  public void setIgnoreProfileErrors(boolean ignoreProfileErrors) {
-    this.ignoreProfileErrors = ignoreProfileErrors;
-  }
-
+  
   public String oid2Uri(String oid) {
     if (oid != null && oid.startsWith("urn:oid:")) {
       oid = oid.substring(8);
@@ -227,11 +220,11 @@ public class ContextUtilities implements ProfileKnowledgeProvider {
         if (!set.contains(sd)) {
           try {
             generateSnapshot(sd);
-            // new XmlParser().setOutputStyle(OutputStyle.PRETTY).compose(new FileOutputStream(Utilities.path("[tmp]", "snapshot", tail(sd.getUrl())+".xml")), sd);
+            // new XmlParser().setOutputStyle(OutputStyle.PRETTY).compose(ManagedFileAccess.outStream(Utilities.path("[tmp]", "snapshot", tail(sd.getUrl())+".xml")), sd);
           } catch (Exception e) {
             if (!isSuppressDebugMessages()) {
               System.out.println("Unable to generate snapshot @2 for "+tail(sd.getUrl()) +" from "+tail(sd.getBaseDefinition())+" because "+e.getMessage());
-              if (context.getLogger().isDebugLogging()) {
+              if (context.getLogger() != null && context.getLogger().isDebugLogging()) {
                 e.printStackTrace();
               }
             }
@@ -258,11 +251,7 @@ public class ContextUtilities implements ProfileKnowledgeProvider {
    * @throws FHIRException
    */
   public void generateSnapshot(StructureDefinition p) throws DefinitionException, FHIRException {
-    generateSnapshot(p, false);
-  }
-  
-  public void generateSnapshot(StructureDefinition p, boolean ifLogical) {
-    if ((!p.hasSnapshot() || isProfileNeedsRegenerate(p) ) && (ifLogical || p.getKind() != StructureDefinitionKind.LOGICAL)) {
+    if ((!p.hasSnapshot() || isProfileNeedsRegenerate(p))) {
       if (!p.hasBaseDefinition())
         throw new DefinitionException(context.formatMessage(I18nConstants.PROFILE___HAS_NO_BASE_AND_NO_SNAPSHOT, p.getName(), p.getUrl()));
       StructureDefinition sd = context.fetchResource(StructureDefinition.class, p.getBaseDefinition(), p);
@@ -291,7 +280,7 @@ public class ContextUtilities implements ProfileKnowledgeProvider {
       }
       pu.generateSnapshot(sd, p, p.getUrl(), sd.getUserString("webroot"), p.getName());
       for (ValidationMessage msg : msgs) {
-        if ((!ignoreProfileErrors && msg.getLevel() == ValidationMessage.IssueSeverity.ERROR) || msg.getLevel() == ValidationMessage.IssueSeverity.FATAL) {
+        if ((!ProfileUtilities.isSuppressIgnorableExceptions() && msg.getLevel() == ValidationMessage.IssueSeverity.ERROR) || msg.getLevel() == ValidationMessage.IssueSeverity.FATAL) {
           if (!msg.isIgnorableError()) {
             throw new DefinitionException(context.formatMessage(I18nConstants.PROFILE___ELEMENT__ERROR_GENERATING_SNAPSHOT_, p.getName(), p.getUrl(), msg.getLocation(), msg.getMessage()));
           } else {
@@ -318,8 +307,7 @@ public class ContextUtilities implements ProfileKnowledgeProvider {
 
   @Override
   public boolean isPrimitiveType(String type) {
-    StructureDefinition sd = context.fetchTypeDefinition(type);
-    return sd != null && sd.getKind() == StructureDefinitionKind.PRIMITIVETYPE;
+    return context.isPrimitiveType(type);
   }
 
   @Override
@@ -330,6 +318,9 @@ public class ContextUtilities implements ProfileKnowledgeProvider {
 
   @Override
   public boolean isResource(String t) {
+    if (getConcreteResourceSet().contains(t)) {
+      return true;
+    }
     StructureDefinition sd;
     try {
       sd = context.fetchResource(StructureDefinition.class, "http://hl7.org/fhir/StructureDefinition/"+t);
@@ -372,32 +363,33 @@ public class ContextUtilities implements ProfileKnowledgeProvider {
     return false;
   }
 
-  public boolean isPrimitiveDatatype(String type) {
-    StructureDefinition sd = context.fetchTypeDefinition(type);
-    return sd != null && sd.getKind() == StructureDefinitionKind.PRIMITIVETYPE;
-  }
-
   public StructureDefinition fetchByJsonName(String key) {
     for (StructureDefinition sd : context.fetchResourcesByType(StructureDefinition.class)) {
       ElementDefinition ed = sd.getSnapshot().getElementFirstRep();
-      if (sd.getKind() == StructureDefinitionKind.LOGICAL && ed != null && ed.hasExtension(ToolingExtensions.EXT_JSON_NAME) && 
-          key.equals(ToolingExtensions.readStringExtension(ed, ToolingExtensions.EXT_JSON_NAME))) {
+      if (sd.getKind() == StructureDefinitionKind.LOGICAL && ed != null && ed.hasExtension(ToolingExtensions.EXT_JSON_NAME, ToolingExtensions.EXT_JSON_NAME_DEPRECATED) && 
+          key.equals(ToolingExtensions.readStringExtension(ed, ToolingExtensions.EXT_JSON_NAME, ToolingExtensions.EXT_JSON_NAME_DEPRECATED))) {
         return sd;
       }
     }
     return null;
   }
 
-  public List<String>  getConcreteResources() {
-    if (concreteResourceNames == null) {
-      concreteResourceNames =  new ArrayList<>();
-      Set<String> names = new HashSet<>();
-      for (StructureDefinition sd : allStructures()) {
-        if (sd.getKind() == StructureDefinitionKind.RESOURCE && !sd.getAbstract()) {
-          names.add(sd.getType());
+  public Set<String> getConcreteResourceSet() {
+    if (concreteResourceNameSet == null) {
+      concreteResourceNameSet =  new HashSet<>();
+      for (StructureDefinition sd : getStructures()) {
+        if (sd.getKind() == StructureDefinitionKind.RESOURCE && !sd.getAbstract() && sd.getDerivation() == TypeDerivationRule.SPECIALIZATION) {
+          concreteResourceNameSet.add(sd.getType());
         }
       }
-      concreteResourceNames.addAll(Utilities.sorted(names));
+    }
+    return concreteResourceNameSet;
+  }
+
+  public List<String> getConcreteResources() {
+    if (concreteResourceNames == null) {
+      concreteResourceNames =  new ArrayList<>();
+      concreteResourceNames.addAll(Utilities.sorted(getConcreteResourceSet()));
     }
     return concreteResourceNames;
   }
@@ -439,6 +431,46 @@ public class ContextUtilities implements ProfileKnowledgeProvider {
     if (candidates.size() == 1) {
       return candidates.get(0);
     }
+    return null;
+  }
+
+  public StructureDefinition fetchProfileByIdentifier(String tid) {
+    for (StructureDefinition sd : context.fetchResourcesByType(StructureDefinition.class)) {
+      for (Identifier ii : sd.getIdentifier()) {
+        if (tid.equals(ii.getValue())) {
+          return sd;
+        }
+      }
+    }
+    return null;
+  }
+
+  public boolean isAbstractType(String typeName) {
+    StructureDefinition sd = context.fetchTypeDefinition(typeName);
+    if (sd != null) {
+      return sd.getAbstract();
+    }
+    return false;
+  }
+
+  public boolean isDomainResource(String typeName) {
+    StructureDefinition sd = context.fetchTypeDefinition(typeName);
+    while (sd != null) {
+      if ("DomainResource".equals(sd.getType())) {
+        return true;
+      }
+      sd = context.fetchResource(StructureDefinition.class, sd.getBaseDefinition());  
+    }
+    return false;
+  }
+
+  public IWorkerContext getWorker() {
+    return context;     
+  }
+
+  @Override
+  public String getCanonicalForDefaultContext() {
+    // TODO Auto-generated method stub
     return null;
   }
 

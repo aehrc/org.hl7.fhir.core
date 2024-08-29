@@ -18,11 +18,13 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import org.hl7.fhir.utilities.CommaSeparatedStringBuilder;
-import org.hl7.fhir.utilities.SimpleHTTPClient;
-import org.hl7.fhir.utilities.SimpleHTTPClient.HTTPResult;
 import org.hl7.fhir.utilities.TextFile;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.VersionUtilities;
+import org.hl7.fhir.utilities.http.HTTPAuthenticationMode;
+import org.hl7.fhir.utilities.http.HTTPResult;
+import org.hl7.fhir.utilities.http.ManagedWebAccess;
+import org.hl7.fhir.utilities.http.ManagedWebAccessBuilder;
 import org.hl7.fhir.utilities.json.model.JsonArray;
 import org.hl7.fhir.utilities.json.model.JsonObject;
 import org.hl7.fhir.utilities.json.model.JsonProperty;
@@ -119,11 +121,11 @@ public class PackageClient {
     try {
       return obj.hasString("date") ? obj.asDate("date") : null;
     } catch (DateTimeParseException e) {
-      //FIXME Some IGs use an older date format:
       try {
         return new SimpleDateFormat("yyyyMMddhhmmss").parse(obj.getJsonString("date").asString()).toInstant();
       } catch (ParseException ex) {
-        throw new RuntimeException(ex);
+        // we tried to parse the date, but failed twice. We're just going to pretend we didn't get a date 
+        return null;    
       }
     }
   }
@@ -174,20 +176,15 @@ public class PackageClient {
   }
  
   private InputStream fetchUrl(String source, String accept) throws IOException {
-    SimpleHTTPClient http = getSimpleHTTPClient();
-    HTTPResult res = http.get(source, accept);
+    ManagedWebAccessBuilder client = ManagedWebAccess.builder().withAccept(accept);
+    if (server.getAuthenticationMode() == HTTPAuthenticationMode.TOKEN) {
+      client.withToken(server.getToken());
+    } else if (server.getAuthenticationMode() == HTTPAuthenticationMode.BASIC) {
+      client.withBasicAuth(server.getUsername(), server.getPassword());
+    }
+    HTTPResult res = client.get(source);
     res.checkThrowException();
     return new ByteArrayInputStream(res.getContent());
-  }
-
-  @Nonnull
-  private SimpleHTTPClient getSimpleHTTPClient() {
-    SimpleHTTPClient client = new SimpleHTTPClient();
-    client.setAuthenticationMode(server.getAuthenticationMode());
-    client.setUsername(server.getUsername());
-    client.setPassword(server.getPassword());
-    client.setToken(server.getToken());
-    return client;
   }
 
   private JsonObject fetchJson(String source) throws IOException {

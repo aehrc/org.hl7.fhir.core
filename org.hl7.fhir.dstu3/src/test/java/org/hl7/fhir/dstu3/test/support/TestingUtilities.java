@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import javax.xml.parsers.DocumentBuilder;
@@ -14,9 +15,10 @@ import javax.xml.parsers.DocumentBuilderFactory;
 
 import org.apache.commons.codec.binary.Base64;
 import org.hl7.fhir.dstu3.context.IWorkerContext;
-import org.hl7.fhir.utilities.CSFile;
 import org.hl7.fhir.utilities.TextFile;
 import org.hl7.fhir.utilities.Utilities;
+import org.hl7.fhir.utilities.filesystem.CSFile;
+import org.hl7.fhir.utilities.filesystem.ManagedFileAccess;
 import org.hl7.fhir.utilities.tests.BaseTestingUtilities;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -38,7 +40,7 @@ public class TestingUtilities extends BaseTestingUtilities {
 
 	static public String fixedpath;
 
-  public static String home() {
+  public static String home() throws IOException {
     if (fixedpath != null)
      return fixedpath;
     String s = System.getenv("FHIR_HOME");
@@ -48,7 +50,7 @@ public class TestingUtilities extends BaseTestingUtilities {
 	  if (!Utilities.noString(s))
 		  return s;
     s = "C:\\work\\org.hl7.fhir\\build";
-    if (new File(s).exists())
+    if (ManagedFileAccess.file(s).exists())
       return s;
     throw new Error("FHIR Home directory not configured");
   }
@@ -66,7 +68,7 @@ public class TestingUtilities extends BaseTestingUtilities {
 	    command.add("\"" + diff + "\" \"" + f1 + "\" \"" + f2 + "\"");
 
 	    ProcessBuilder builder = new ProcessBuilder(command);
-	    builder.directory(new CSFile(Utilities.path("[tmp]")));
+	    builder.directory(ManagedFileAccess.csfile(Utilities.path("[tmp]")));
 	    builder.start();
 			
 		}
@@ -170,7 +172,7 @@ public class TestingUtilities extends BaseTestingUtilities {
 	}
 
   private static Document loadXml(String fn) throws Exception {
-    return loadXml(new FileInputStream(fn));
+    return loadXml(ManagedFileAccess.inStream(fn));
   }
 
   private static Document loadXml(InputStream fn) throws Exception {
@@ -195,7 +197,7 @@ public class TestingUtilities extends BaseTestingUtilities {
 	    command.add("\"" + diff + "\" \"" + f1 + "\" \"" + f2 + "\"");
 
 	    ProcessBuilder builder = new ProcessBuilder(command);
-	    builder.directory(new CSFile(Utilities.path("[tmp]")));
+	    builder.directory(ManagedFileAccess.csfile(Utilities.path("[tmp]")));
 	    builder.start();
 			
 		}
@@ -276,5 +278,7 @@ public class TestingUtilities extends BaseTestingUtilities {
 		return null;
 	}
 
-
+  public static boolean runningAsSurefire() {
+    return "true".equals(System.getProperty("runningAsSurefire") != null ? System.getProperty("runningAsSurefire").toLowerCase(Locale.ENGLISH) : "");
+  }
 }

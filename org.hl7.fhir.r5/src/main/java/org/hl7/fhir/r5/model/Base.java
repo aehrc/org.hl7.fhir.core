@@ -1,5 +1,33 @@
 package org.hl7.fhir.r5.model;
 
+/*
+  Copyright (c) 2011+, HL7, Inc.
+  All rights reserved.
+  
+  Redistribution and use in source and binary forms, with or without modification, \
+  are permitted provided that the following conditions are met:
+  
+   * Redistributions of source code must retain the above copyright notice, this \
+     list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above copyright notice, \
+     this list of conditions and the following disclaimer in the documentation \
+     and/or other materials provided with the distribution.
+   * Neither the name of HL7 nor the names of its contributors may be used to 
+     endorse or promote products derived from this software without specific 
+     prior written permission.
+  
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\" AND \
+  ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED \
+  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. \
+  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, \
+  INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT \
+  NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR \
+  PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, \
+  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) \
+  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE \
+  POSSIBILITY OF SUCH DAMAGE.
+  */
+
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -8,6 +36,8 @@ import java.util.Map;
 
 import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.instance.model.api.IBase;
+import org.hl7.fhir.r5.model.Enumerations.FHIRVersion;
+import org.hl7.fhir.utilities.FhirPublication;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.validation.ValidationMessage;
 import org.hl7.fhir.utilities.xhtml.XhtmlNode;
@@ -228,37 +258,81 @@ public abstract class Base implements Serializable, IBase, IElement {
   }
 
 	// these 3 allow evaluation engines to get access to primitive values
+  
+  /**
+   * @return true if the data type is a primitive type and might have a primitive value 
+   *   (which will be accessed as a string, irrespective of the stated value)
+   */
 	public boolean isPrimitive() {
 		return false;
 	}
 	
+	/**
+	 * @return true if the type is boolean, and the primitive value can only be 'true' or 'false'
+	 */
   public boolean isBooleanPrimitive() {
     return false;
   }
 
-	public boolean hasPrimitiveValue() {
-		return isPrimitive();
-	}
-	
+  /**
+   * @return true if the type is primitive, and there's value (e.g. no Data-Absent-Reason extension etc)
+   */
+  public boolean hasPrimitiveValue() {
+    return primitiveValue() != null;
+  }
+  
+  /**
+   * @return true if the type is primitive, and there could be a value (irrespective of whether it's present e.g. no Data-Absent-Reason extension etc)
+   */
+  public boolean canHavePrimitiveValue() {
+    return false;
+  }
+  
+	/**
+	 * @return the primitive value if there is one, as a string irrespective of the actual type (e.g. dates converted to their FHIR string representation)
+	 *    return null if the value is not a primitive or there is no value (might be extensions instead)
+	 */
 	public String primitiveValue() {
 		return null;
 	}
 	
+  /**
+   * @return true if the type is date|dateTime|instant, and the primitive value is a date/time of some precision
+   */
   public boolean isDateTime() {
     return false;
   }
 
+  /**
+   * @return the date/time value if there is one, or null
+   */
   public BaseDateTimeType dateTimeValue() {
     return null;
   }
-  
+
+  /**
+   * @return the FHIR type name of the instance (not the java class name)
+   */
 	public abstract String fhirType() ;
-	
+
+	/**
+	 * Note that this is potentially misleading on ElementDefinition that has a 'type' 
+	 * property - don't mistakenly use this thinking it's going to look at ElementDefinition.type
+   *
+	 * @param name - fhir type name
+	 * @return- true if it 'has' this type (including by specialization)
+	 */
 	public boolean hasType(String... name) {
 		String t = fhirType();
-		for (String n : name)
+		for (String n : name) {
 		  if (n.equalsIgnoreCase(t))
 		  	return true;
+		  if (n.contains(".")) {
+		    String[] p = n.split("\\.");
+		    if (p.length == 2 && Utilities.existsInList(p[0], "FHIR", "CDA") && p[1].equalsIgnoreCase(t))
+	        return true;
+		  }
+		}
 		return false;
 	}
 	
@@ -274,7 +348,7 @@ public abstract class Base implements Serializable, IBase, IElement {
     throw new FHIRException("Attempt to add child with unknown name "+name);
   }
 
-	public boolean removeChild(String name, Base value) {
+	public void removeChild(String name, Base value) throws FHIRException {
     throw new FHIRException("Attempt to remove child with unknown name "+name);
 	}
   /**
@@ -311,6 +385,18 @@ public abstract class Base implements Serializable, IBase, IElement {
     return result;
   }
 
+  public Base getChildValueByName(String name) {
+    Property p = getChildByName(name);
+    if (p != null && p.hasValues()) {
+      if (p.getValues().size() > 1) {
+        throw new Error("Too manye values for "+name+" found");
+      } else {
+        return p.getValues().get(0);        
+      }
+    }
+    return null;
+  }
+  
   public Base[] listChildrenByName(String name, boolean checkValid) throws FHIRException {
   	if (name.equals("*")) {
   		List<Property> children = new ArrayList<Property>();
@@ -513,7 +599,17 @@ public abstract class Base implements Serializable, IBase, IElement {
     return vi;
   }
   
-  
+
+  public boolean hasValidated(StructureDefinition sd, ElementDefinition ed) {
+    if (validationInfo != null) {
+      for (ValidationInfo vi : validationInfo) {
+        if (vi.definition == ed && vi.structure == sd) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
   
   // validation messages: the validator does not populate these (yet)
   public Base addValidationMessage(ValidationMessage msg) {
@@ -532,4 +628,5 @@ public abstract class Base implements Serializable, IBase, IElement {
     return validationMessages != null ? validationMessages : new ArrayList<>();
   }
 
+  public abstract FhirPublication getFHIRPublicationVersion();
 }

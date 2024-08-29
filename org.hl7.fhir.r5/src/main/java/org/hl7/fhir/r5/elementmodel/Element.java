@@ -38,6 +38,8 @@ import org.apache.commons.lang3.Validate;
 import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.r5.conformance.profile.ProfileUtilities;
 import org.hl7.fhir.r5.context.ContextUtilities;
+import org.hl7.fhir.r5.elementmodel.Element.SliceDefinition;
+import org.hl7.fhir.r5.elementmodel.Manager.FhirFormat;
 import org.hl7.fhir.r5.extensions.ExtensionsUtils;
 import org.hl7.fhir.r5.model.Base;
 import org.hl7.fhir.r5.model.DataType;
@@ -54,6 +56,9 @@ import org.hl7.fhir.r5.terminologies.expansion.ValueSetExpansionOutcome;
 import org.hl7.fhir.r5.utils.ToolingExtensions;
 import org.hl7.fhir.utilities.ElementDecoration;
 import org.hl7.fhir.utilities.ElementDecoration.DecorationType;
+import org.hl7.fhir.utilities.FhirPublication;
+import org.hl7.fhir.utilities.NamedItemList;
+import org.hl7.fhir.utilities.NamedItemList.NamedItem;
 import org.hl7.fhir.utilities.SourceLocation;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.validation.ValidationMessage;
@@ -69,7 +74,33 @@ import org.hl7.fhir.utilities.xhtml.XhtmlNode;
  * @author Grahame Grieve
  *
  */
-public class Element extends Base {
+public class Element extends Base implements NamedItem {
+  public class SliceDefinition {
+
+    private StructureDefinition profile;
+    private ElementDefinition definition;
+    private ElementDefinition slice;
+
+    public SliceDefinition(StructureDefinition profile, ElementDefinition definition, ElementDefinition slice) {
+      this.profile = profile;
+      this.definition = definition;
+      this.slice = slice;
+    }
+
+    public StructureDefinition getProfile() {
+      return profile;
+    }
+
+    public ElementDefinition getDefinition() {
+      return definition;
+    }
+
+    public ElementDefinition getSlice() {
+      return slice;
+    }
+
+  }
+
   private static final HashSet<String> extensionList = new HashSet<>(Arrays.asList("extension", "modifierExtension"));
 
   public enum SpecialElement {
@@ -109,7 +140,7 @@ public class Element extends Base {
 	private String type;
 	private String value;
 	private int index = -1;
-	private List<Element> children;
+	private NamedItemList<Element> children;
 	private Property property;
   private Property elementProperty; // this is used when special is set to true - it tracks the underlying element property which is used in a few places
 	private int line;
@@ -123,12 +154,14 @@ public class Element extends Base {
 	private List<ValidationMessage> messages;
 	private boolean prohibited;
 	private boolean required;
-  private Map<String, List<Element>> childMap;
   private int descendentCount;
   private int instanceId;
   private boolean isNull;
   private Base source;
   private boolean ignorePropertyOrder;
+  private FhirFormat format;
+  private Object nativeObject;
+  private List<SliceDefinition> sliceDefinitions;
 
 	public Element(String name) {
 		super();
@@ -149,7 +182,7 @@ public class Element extends Base {
 		this.name = name;
 		this.property = property;
 		if (property.isResource()) {
-		  children = new ArrayList<>();
+		  children = new NamedItemList<>();
 		}
 	}
 
@@ -190,9 +223,9 @@ public class Element extends Base {
 		return !(children == null || children.isEmpty());
 	}
 
-	public List<Element> getChildren() {
+	public NamedItemList<Element> getChildren() {
 		if (children == null)
-			children = new ArrayList<Element>();
+			children = new NamedItemList<Element>();
 		return children;
 	}
 
@@ -233,21 +266,7 @@ public class Element extends Base {
 	}
 
 	public List<Element> getChildrenByName(String name) {
-		List<Element> res = new ArrayList<Element>();
-		if (children.size() > 20) {
-      populateChildMap();
-      List<Element> l = childMap.get(name);
-      if (l != null) {
-        res.addAll(l);
-      }
-    } else {
-  		if (hasChildren()) {
-  			for (Element child : children)
-  				if (name.equals(child.getName()))
-  					res.add(child);
-  		}
-    }
-		return res;
+		return children.getByName(name);
 	}
 
 	public void numberChildren() {
@@ -308,7 +327,7 @@ public class Element extends Base {
 
   public void setChildValue(String name, String value) {
     if (children == null)
-      children = new ArrayList<Element>();
+      children = new NamedItemList<Element>();
     for (Element child : children) {
       if (name.equals(child.getName())) {
         if (!child.isPrimitive())
@@ -316,7 +335,7 @@ public class Element extends Base {
         child.setValue(value);
       }
     }
-    childMap = null;
+
     try {
       setProperty(name.hashCode(), name, new StringType(value));
     } catch (FHIRException e) {
@@ -327,8 +346,7 @@ public class Element extends Base {
   public List<Element> getChildren(String name) {
     List<Element> res = new ArrayList<Element>(); 
     if (children.size() > 20) {
-      populateChildMap();
-      List<Element> l = childMap.get(name);
+      List<Element> l = children.getByName(name);
       if (l != null) {
         res.addAll(l);
       }
@@ -367,8 +385,7 @@ public class Element extends Base {
   	List<Base> result = new ArrayList<Base>();
   	if (children != null) {
   	  if (children.size() > 20) {
-  	    populateChildMap();
-        List<Element> l = childMap.get(name);
+        List<Element> l = children.getByName(name);
         if (l != null) {
           result.addAll(l);
         }
@@ -388,27 +405,6 @@ public class Element extends Base {
   	}
   	return result.toArray(new Base[result.size()]);
 	}
-
-  private void populateChildMap() {
-    if (childMap == null) {
-      childMap = new HashMap<>();
-      for (Element child : children) {
-        String n;
-        if (child.getProperty().getName().endsWith("[x]")) {
-          n = child.getProperty().getName();
-          n = n.substring(0, n.length()-3);
-        } else {
-          n = child.getName();
-        }
-        List<Element> l = childMap.get(n);
-        if (l == null) {
-          l = new ArrayList<Element>();
-          childMap.put(n,l);
-        }
-        l.add(child);
-      }  	      
-    }
-  }
 
 	@Override
 	protected void listChildren(List<org.hl7.fhir.r5.model.Property> childProps) {
@@ -446,9 +442,8 @@ public class Element extends Base {
         throw new FHIRException("Cannot set property "+name+" on "+this.name+" - value is not a primitive type ("+value.fhirType()+") or an ElementModel type");
     }
     
-    childMap = null;
     if (children == null)
-      children = new ArrayList<Element>();
+      children = new NamedItemList<Element>();
     Element childForValue = null;
     
     // look through existing children
@@ -458,7 +453,7 @@ public class Element extends Base {
           childForValue = child;
           break;
         } else {
-          Element ne = new Element(child);
+          Element ne = new Element(child).setFormat(format);
           children.add(ne);
           numberChildren();
           childForValue = ne;
@@ -479,7 +474,7 @@ public class Element extends Base {
         if (t >= i)
           i = t+1;
         if (p.getName().equals(name) || p.getName().equals(name+"[x]")) {
-          Element ne = new Element(name, p);
+          Element ne = new Element(name, p).setFormat(format);
           children.add(i, ne);
           childForValue = ne;
           break;
@@ -505,7 +500,7 @@ public class Element extends Base {
       }
       if (ve.children != null) {
         if (childForValue.children == null)
-          childForValue.children = new ArrayList<Element>();
+          childForValue.children = new NamedItemList<Element>();
         else 
           childForValue.children.clear();
         childForValue.children.addAll(ve.children);
@@ -519,7 +514,7 @@ public class Element extends Base {
   }
 
   private boolean isDataType(Base v) {
-    return v instanceof DataType && new ContextUtilities(property.getContext()).getTypeNames().contains(v.fhirType());
+    return v instanceof DataType && property.getContextUtils().getTypeNames().contains(v.fhirType());
   }
 
   @Override
@@ -533,7 +528,7 @@ public class Element extends Base {
 
   public Element makeElement(String name) throws FHIRException {
     if (children == null)
-      children = new ArrayList<Element>();
+      children = new NamedItemList<Element>();
     
     // look through existing children
     for (Element child : children) {
@@ -541,7 +536,7 @@ public class Element extends Base {
         if (!child.isList()) {
           return child;
         } else {
-          Element ne = new Element(child);
+          Element ne = new Element(child).setFormat(format);
           children.add(ne);
           numberChildren();
           return ne;
@@ -551,15 +546,15 @@ public class Element extends Base {
 
     for (Property p : property.getChildProperties(this.name, type)) {
       if (p.getName().equals(name)) {
-        Element ne = new Element(name, p);
+        Element ne = new Element(name, p).setFormat(format);
         children.add(ne);
         return ne;
       } else if (p.getDefinition().isChoice() && name.startsWith(p.getName().replace("[x]", ""))) {
         String type = name.substring(p.getName().length()-3);
-        if (new ContextUtilities(property.getContext()).isPrimitiveDatatype(Utilities.uncapitalize(type))) {
+        if (property.getContext().isPrimitiveType(Utilities.uncapitalize(type))) {
           type = Utilities.uncapitalize(type);
         }
-        Element ne = new Element(name, p);
+        Element ne = new Element(name, p).setFormat(format);
         ne.setType(type);
         children.add(ne);
         return ne;
@@ -572,7 +567,7 @@ public class Element extends Base {
 
   public Element forceElement(String name) throws FHIRException {
     if (children == null)
-      children = new ArrayList<Element>();
+      children = new NamedItemList<Element>();
     
     // look through existing children
     for (Element child : children) {
@@ -583,7 +578,7 @@ public class Element extends Base {
 
     for (Property p : property.getChildProperties(this.name, type)) {
       if (p.getName().equals(name)) {
-        Element ne = new Element(name, p);
+        Element ne = new Element(name, p).setFormat(format);
         children.add(ne);
         return ne;
       }
@@ -616,18 +611,24 @@ public class Element extends Base {
   }
   
 
-	@Override
-	public boolean hasPrimitiveValue() {
-		return property.isPrimitiveName(name) || property.IsLogicalAndHasPrimitiveValue(name);
-	}
-	
+  @Override
+  public boolean hasPrimitiveValue() {
+    //return property.isPrimitiveName(name) || property.IsLogicalAndHasPrimitiveValue(name);
+    return super.hasPrimitiveValue();
+  }
+  
+  @Override
+  public boolean canHavePrimitiveValue() {
+    return property.isPrimitiveName(name) || property.IsLogicalAndHasPrimitiveValue(name);
+  }
+  
 
 	@Override
 	public String primitiveValue() {
 		if (isPrimitive() || value != null)
 		  return value;
 		else {
-			if (hasPrimitiveValue() && children != null) {
+			if (canHavePrimitiveValue() && children != null) {
 				for (Element c : children) {
 					if (c.getName().equals("value"))
 						return c.primitiveValue();
@@ -669,7 +670,6 @@ public class Element extends Base {
 	  for (Element e : children) {
 	    e.clearDecorations();	  
 	  }
-    childMap = null;
 	}
 	
 	public void markValidation(StructureDefinition profile, ElementDefinition definition) {
@@ -691,14 +691,16 @@ public class Element extends Base {
   }
 
   public Element getNamedChild(String name) {
+    return getNamedChild(name, true);
+  }
+  public Element getNamedChild(String name, boolean exception) {
     if (children == null)
       return null;
     if (children.size() > 20) {
-      populateChildMap();
-      List<Element> l = childMap.get(name);
-      if (l == null) {
+      List<Element> l = children.getByName(name);
+      if (l == null || l.size() == 0) {
         // try the other way (in case of complicated naming rules)
-      } else if (l.size() > 1) {
+      } else if (l.size() > 1 && exception) {
         throw new Error("Attempt to read a single element when there is more than one present ("+name+")");
       } else {
         return l.get(0);
@@ -724,8 +726,7 @@ public class Element extends Base {
   public void getNamedChildren(String name, List<Element> list) {
   	if (children != null)
   	  if (children.size() > 20) {
-        populateChildMap();
-        List<Element> l = childMap.get(name);
+        List<Element> l = children.getByName(name);
         if (l != null) {
           list.addAll(l);
         }
@@ -737,7 +738,11 @@ public class Element extends Base {
   }
 
   public String getNamedChildValue(String name) {
-  	Element child = getNamedChild(name);
+    return getNamedChildValue(name, true);
+  }
+  
+  public String getNamedChildValue(String name, boolean exception) {
+  	Element child = getNamedChild(name, exception);
   	return child == null ? null : child.value;
   }
 
@@ -789,7 +794,11 @@ public class Element extends Base {
   }
 
   public boolean hasChild(String name) {
-    return getNamedChild(name) != null;
+    return getNamedChild(name, true) != null;
+  }
+
+  public boolean hasChild(String name, boolean exception) {
+    return getNamedChild(name, exception) != null;
   }
 
   public boolean hasChildren(String name) {
@@ -827,7 +836,7 @@ public class Element extends Base {
   public boolean equalsDeep(Base other) {
     if (!super.equalsDeep(other))
       return false;
-    if (isPrimitive() && other.isPrimitive())
+    if (isPrimitive() && primitiveValue() != null && other.isPrimitive())
       return primitiveValue().equals(other.primitiveValue());
     if (isPrimitive() || other.isPrimitive())
       return false;
@@ -918,8 +927,7 @@ public class Element extends Base {
           remove.add(child);
       }
       children.removeAll(remove);
-      Collections.sort(children, new ElementSortComparator(this, this.property));
-      childMap = null;
+      children.sort(new ElementSortComparator(this, this.property));
     }
   }
 
@@ -1028,15 +1036,15 @@ public class Element extends Base {
       return c;   
     } else if ("Coding".equals(fhirType())) {
       ICodingImpl c = new ICodingImpl(true, true, true, true);
-      c.system = getNamedChildValue("system");
-      c.code = getNamedChildValue("code");
-      c.display = getNamedChildValue("display");
-      c.version = getNamedChildValue("version");
+      c.system = getNamedChildValue("system", false);
+      c.code = getNamedChildValue("code", false);
+      c.display = getNamedChildValue("display", false);
+      c.version = getNamedChildValue("version", false);
       return c;
     } else if ("Quantity".equals(fhirType())) {
       ICodingImpl c = new ICodingImpl(true, true, false, false);
-      c.system = getNamedChildValue("system");
-      c.code = getNamedChildValue("code");
+      c.system = getNamedChildValue("system", false);
+      c.code = getNamedChildValue("code", false);
       return c;
     } else 
       return null;
@@ -1081,7 +1089,7 @@ public class Element extends Base {
         if (Utilities.existsInList(child.getName(), "extension", "modifierExtension")) {
           String u = child.getChildValue("url");
           if (url.equals(u)) {
-            return child.getNamedChild("value");
+            return child.getNamedChild("value", false);
           }
         }
       }
@@ -1125,7 +1133,6 @@ public class Element extends Base {
   public void clear() {
     comments = null;
     children.clear();
-    childMap = null;
     property = null;
     elementProperty = null;
     xhtml = null;
@@ -1157,7 +1164,6 @@ public class Element extends Base {
 
   public void removeChild(String name) {
     children.removeIf(n -> name.equals(n.getName()));
-    childMap = null;
   }
 
   public boolean isProhibited() {
@@ -1331,16 +1337,33 @@ public class Element extends Base {
 
   public Element addElement(String name) {
     if (children == null)
-      children = new ArrayList<Element>();
+      children = new NamedItemList<Element>();
 
     for (Property p : property.getChildProperties(this.name, type)) {
       if (p.getName().equals(name)) {
-        if (!p.isList()) {
+        if (!p.isList() && hasChild(name, false)) {
           throw new Error(name+" on "+this.name+" is not a list, so can't add an element"); 
         }
-        Element ne = new Element(name, p);
+        Element ne = new Element(name, p).setFormat(format);
         children.add(ne);
         return ne;
+      }
+      // polymorphic support
+      if (p.getName().endsWith("[x]")) {
+        String base = p.getName().substring(0, p.getName().length()-3);
+        
+        if (name.startsWith(base)) {
+          String type = name.substring(base.length());
+          if (p.getContextUtils().isPrimitiveType(Utilities.uncapitalize(type))) {
+            type = Utilities.uncapitalize(type);
+          }
+          if (p.canBeType(type)) {
+            Element ne = new Element(name, p).setFormat(format);
+            ne.setType(type);
+            children.add(ne);
+            return ne;
+          }
+        }
       }
     }
 
@@ -1367,13 +1390,13 @@ public class Element extends Base {
     }
     dest.value = value;
     if (children != null) {
-      dest.children = new ArrayList<>();
+      dest.children = new NamedItemList<>();
       for (Element child : children) {
         dest.children.add((Element) child.copy());
       }
     } else {
       dest.children = null;
-    }
+    }    
     dest.line = line;
     dest.col = col;
     dest.xhtml = xhtml;
@@ -1383,11 +1406,11 @@ public class Element extends Base {
     dest.messages = null;
     dest.prohibited = prohibited;
     dest.required = required;
-    dest.childMap = null;
     dest.descendentCount = descendentCount;
     dest.instanceId = instanceId;
     dest.isNull = isNull;
     dest.source = source;
+    dest.format = format;
   }
   
   public Base setProperty(String name, Base value) throws FHIRException {
@@ -1423,17 +1446,17 @@ public class Element extends Base {
   public String getTranslation(String lang) {
     for (Element e : getChildren()) {
       if (e.fhirType().equals("Extension")) {
-        String url = e.getNamedChildValue("url");
+        String url = e.getNamedChildValue("url", false);
         if (ToolingExtensions.EXT_TRANSLATION.equals(url)) {
           String l = null;
           String v = null;
           for (Element g : e.getChildren()) {
             if (g.fhirType().equals("Extension")) {
-              String u = g.getNamedChildValue("url");
+              String u = g.getNamedChildValue("url", false);
               if ("lang".equals(u)) {
-                l = g.getNamedChildValue("value");
+                l = g.getNamedChildValue("value", false);
               } else if ("value".equals(u)) {
-                v = g.getNamedChildValue("value");
+                v = g.getNamedChildValue("value", false);
               }
             }
           }
@@ -1462,17 +1485,17 @@ public class Element extends Base {
   public void setTranslation(String lang, String translation) {
     for (Element e : getChildren()) {
       if (e.fhirType().equals("Extension")) {
-        String url = e.getNamedChildValue("url");
+        String url = e.getNamedChildValue("url", false);
         if (ToolingExtensions.EXT_TRANSLATION.equals(url)) {
           String l = null;
           Element v = null;
           for (Element g : e.getChildren()) {
             if (g.fhirType().equals("Extension")) {
-              String u = g.getNamedChildValue("url");
+              String u = g.getNamedChildValue("url", false);
               if ("lang".equals(u)) {
-                l = g.getNamedChildValue("value");
+                l = g.getNamedChildValue("value", false);
               } else if ("value".equals(u)) {
-                v = g.getNamedChild("value");
+                v = g.getNamedChild("value", false);
               }
             }
           }
@@ -1496,7 +1519,68 @@ public class Element extends Base {
     ext.addElement("valueCode").setValue(lang);
    
     ext = t.addElement("extension");
-    ext.addElement("url").setValue("value");
+    ext.addElement("url").setValue("content");
     ext.addElement("valueString").setValue(translation);
   }
+
+  @Override
+  public String getListName() {
+    if (getProperty().getName().endsWith("[x]")) {
+      String n = getProperty().getName();
+      return n.substring(0, n.length()-3);
+    } else {
+      return getName();
+    }
+  }
+
+  public FhirFormat getFormat() {
+    return format;
+  }
+
+  public Element setFormat(FhirFormat format) {
+    this.format = format;
+    return this;
+  }
+
+  public Object getNativeObject() {
+    return nativeObject;
+  }
+
+  public Element setNativeObject(Object nativeObject) {
+    this.nativeObject = nativeObject;
+    return this;
+  }
+
+  public void removeExtension(String url) {
+    List<Element> rem = new ArrayList<>();
+    for (Element e : children) {
+      if ("extension".equals(e.getName()) && url.equals(e.getChildValue("url"))) {
+        rem.add(e);
+      }
+    }
+    children.removeAll(rem);
+  }
+
+  public void addSliceDefinition(StructureDefinition profile, ElementDefinition definition, ElementDefinition slice) {
+    if (sliceDefinitions == null) {
+      sliceDefinitions = new ArrayList<>();
+    }
+    sliceDefinitions.add(new SliceDefinition(profile, definition, slice));
+  }
+
+  public boolean hasSlice(StructureDefinition sd, String sliceName) {
+    if (sliceDefinitions != null) {
+      for (SliceDefinition def : sliceDefinitions) {
+        if (def.profile == sd && sliceName.equals(def.definition.getSliceName())) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  public FhirPublication getFHIRPublicationVersion() {
+    return FhirPublication.fromCode(property.getStructure().getVersion());
+  }
+
 }

@@ -36,6 +36,7 @@ import java.util.Date;
 import java.util.List;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.r5.model.Enumerations.*;
+import org.hl7.fhir.r5.utils.ToolingExtensions;
 import org.hl7.fhir.instance.model.api.IBaseBackboneElement;
 import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.instance.model.api.ICompositeType;
@@ -140,6 +141,9 @@ public class OperationOutcome extends DomainResource implements IBaseOperationOu
             case NULL: return null;
             default: return "?";
           }
+        }
+        public boolean isHigherThan(IssueSeverity other) {
+          return this.ordinal() < other.ordinal();
         }
     }
 
@@ -1237,6 +1241,27 @@ For resource issues, this will be a simple XPath limited to element names, repet
         return value;
       }
 
+  @Override
+  public void removeChild(String name, Base value) throws FHIRException {
+        if (name.equals("severity")) {
+          value = new IssueSeverityEnumFactory().fromType(TypeConvertor.castToCode(value));
+          this.severity = (Enumeration) value; // Enumeration<IssueSeverity>
+        } else if (name.equals("code")) {
+          value = new IssueTypeEnumFactory().fromType(TypeConvertor.castToCode(value));
+          this.code = (Enumeration) value; // Enumeration<IssueType>
+        } else if (name.equals("details")) {
+          this.details = null;
+        } else if (name.equals("diagnostics")) {
+          this.diagnostics = null;
+        } else if (name.equals("location")) {
+          this.getLocation().remove(value);
+        } else if (name.equals("expression")) {
+          this.getExpression().remove(value);
+        } else
+          super.removeChild(name, value);
+        
+      }
+
       @Override
       public Base makeProperty(int hash, String name) throws FHIRException {
         switch (hash) {
@@ -1342,46 +1367,68 @@ For resource issues, this will be a simple XPath limited to element names, repet
           , diagnostics, location, expression);
       }
 
-  public String fhirType() {
-    return "OperationOutcome.issue";
+      public String fhirType() {
+        return "OperationOutcome.issue";
 
-  }
+      }
 
-// added from java-adornments.txt:
-@Override 
-public String toString() { 
-  if (getExpression().size() == 1) { 
-    return getExpression().get(0)+" "+getDiagnostics()+" "+getSeverity().toCode()+"/"+getCode().toCode()+": "+getDetails().getText(); 
-  } else { 
-    return getExpression()+" "+getDiagnostics()+" "+getSeverity().toCode()+"/"+getCode().toCode()+": "+getDetails().getText(); 
-  } 
-} 
+      // added from java-adornments.txt:
+      @Override 
+      public String toString() { 
+        String srvr = hasExtension(ToolingExtensions.EXT_ISSUE_SERVER) ? " (from "+getExtensionString(ToolingExtensions.EXT_ISSUE_SERVER)+")" : "";
+        if (getExpression().size() == 1) { 
+          return getExpression().get(0)+" "+getDiagnostics()+" "+getSeverity().toCode()+"/"+getCode().toCode()+": "+getDetails().getText()+srvr; 
+        } else { 
+          return getExpression()+" "+getDiagnostics()+" "+getSeverity().toCode()+"/"+getCode().toCode()+": "+getDetails().getText()+srvr; 
+        } 
+      } 
 
-public boolean isWarningOrMore() {
-  switch (getSeverity()) {
-  case FATAL: return true;
-  case ERROR: return true;
-  case WARNING: return true;
-  case INFORMATION: return false;
-  case SUCCESS: return false;
-  case NULL: return false;
-  default: return false;
-}
-}
-public  boolean isInformationorLess() {
-  switch (getSeverity()) {
-  case FATAL: return false;
-  case ERROR: return true;
-  case WARNING: return false;
-  case INFORMATION: return true;
-  case SUCCESS: return true;
-  case NULL: return true;
-  default: return false;
-}
-}  
+      public boolean isWarningOrMore() {
+        switch (getSeverity()) {
+        case FATAL: return true;
+        case ERROR: return true;
+        case WARNING: return true;
+        case INFORMATION: return false;
+        case SUCCESS: return false;
+        case NULL: return false;
+        default: return false;
+        }
+      }
+      public  boolean isInformationorLess() {
+        switch (getSeverity()) {
+        case FATAL: return false;
+        case ERROR: return true;
+        case WARNING: return false;
+        case INFORMATION: return true;
+        case SUCCESS: return true;
+        case NULL: return true;
+        default: return false;
+        }
+      }
 
-// end addition
-  }
+      public List<StringType> getExpressionOrLocation() {
+        return hasExpression() ? getExpression() : getLocation();
+      }
+
+      public boolean hasExpressionOrLocation() {
+        return hasExpression() || hasLocation();
+      }
+
+      public void resetPath(String root, String newRoot) {
+        for (StringType st : getLocation()) {
+          if (st.hasValue() && st.getValue().startsWith(root+".")) {
+            st.setValue(newRoot+st.getValue().substring(root.length()));
+          }
+        }
+        for (StringType st : getExpression()) {
+          if (st.hasValue() && st.getValue().startsWith(root+".")) {
+            st.setValue(newRoot+st.getValue().substring(root.length()));
+          }
+        }
+      }  
+
+      // end addition
+    }
 
     /**
      * An error, warning, or information message that results from a system action.
@@ -1501,6 +1548,15 @@ public  boolean isInformationorLess() {
         } else
           return super.setProperty(name, value);
         return value;
+      }
+
+  @Override
+  public void removeChild(String name, Base value) throws FHIRException {
+        if (name.equals("issue")) {
+          this.getIssue().remove((OperationOutcomeIssueComponent) value);
+        } else
+          super.removeChild(name, value);
+        
       }
 
       @Override

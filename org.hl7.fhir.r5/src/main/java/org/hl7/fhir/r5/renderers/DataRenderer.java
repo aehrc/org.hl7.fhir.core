@@ -1,4 +1,4 @@
-package org.hl7.fhir.r5.renderers;
+package org.hl7.fhir.r5.renderers; 
 
 import static java.time.temporal.ChronoField.MONTH_OF_YEAR;
 import static java.time.temporal.ChronoField.YEAR;
@@ -20,63 +20,34 @@ import org.hl7.fhir.exceptions.DefinitionException;
 import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.exceptions.FHIRFormatError;
 import org.hl7.fhir.r5.context.IWorkerContext;
-import org.hl7.fhir.r5.context.IWorkerContext.ValidationResult;
-import org.hl7.fhir.r5.model.Address;
-import org.hl7.fhir.r5.model.Annotation;
 import org.hl7.fhir.r5.model.BackboneType;
 import org.hl7.fhir.r5.model.Base;
-import org.hl7.fhir.r5.model.Base64BinaryType;
 import org.hl7.fhir.r5.model.BaseDateTimeType;
 import org.hl7.fhir.r5.model.CanonicalResource;
-import org.hl7.fhir.r5.model.CanonicalType;
 import org.hl7.fhir.r5.model.CodeSystem;
 import org.hl7.fhir.r5.model.CodeableConcept;
-import org.hl7.fhir.r5.model.CodeableReference;
 import org.hl7.fhir.r5.model.Coding;
 import org.hl7.fhir.r5.model.ContactPoint;
 import org.hl7.fhir.r5.model.ContactPoint.ContactPointSystem;
-import org.hl7.fhir.r5.model.DataRequirement;
-import org.hl7.fhir.r5.model.DataRequirement.DataRequirementCodeFilterComponent;
-import org.hl7.fhir.r5.model.DataRequirement.DataRequirementDateFilterComponent;
-import org.hl7.fhir.r5.model.DataRequirement.DataRequirementSortComponent;
-import org.hl7.fhir.r5.model.DataRequirement.SortDirection;
 import org.hl7.fhir.r5.model.DataType;
 import org.hl7.fhir.r5.model.DateTimeType;
-import org.hl7.fhir.r5.model.DateType;
 import org.hl7.fhir.r5.model.ElementDefinition;
-import org.hl7.fhir.r5.model.Enumeration;
-import org.hl7.fhir.r5.model.Expression;
 import org.hl7.fhir.r5.model.Extension;
-import org.hl7.fhir.r5.model.HumanName;
-import org.hl7.fhir.r5.model.HumanName.NameUse;
-import org.hl7.fhir.r5.model.IdType;
-import org.hl7.fhir.r5.model.Identifier;
-import org.hl7.fhir.r5.model.MarkdownType;
-import org.hl7.fhir.r5.model.Money;
-import org.hl7.fhir.r5.model.Period;
+import org.hl7.fhir.r5.model.NamingSystem;
 import org.hl7.fhir.r5.model.PrimitiveType;
 import org.hl7.fhir.r5.model.Quantity;
-import org.hl7.fhir.r5.model.Range;
-import org.hl7.fhir.r5.model.Reference;
 import org.hl7.fhir.r5.model.Resource;
-import org.hl7.fhir.r5.model.SampledData;
-import org.hl7.fhir.r5.model.StringType;
 import org.hl7.fhir.r5.model.StructureDefinition;
-import org.hl7.fhir.r5.model.Timing;
-import org.hl7.fhir.r5.model.Timing.EventTiming;
-import org.hl7.fhir.r5.model.Timing.TimingRepeatComponent;
-import org.hl7.fhir.r5.model.Timing.UnitsOfTime;
-import org.hl7.fhir.r5.model.UriType;
-import org.hl7.fhir.r5.model.UsageContext;
 import org.hl7.fhir.r5.model.ValueSet;
 import org.hl7.fhir.r5.model.ValueSet.ConceptReferenceComponent;
 import org.hl7.fhir.r5.model.ValueSet.ConceptReferenceDesignationComponent;
-import org.hl7.fhir.r5.renderers.utils.BaseWrappers.BaseWrapper;
-import org.hl7.fhir.r5.renderers.CodeResolver.CodeResolution;
 import org.hl7.fhir.r5.renderers.utils.RenderingContext;
 import org.hl7.fhir.r5.renderers.utils.RenderingContext.GenerationRules;
 import org.hl7.fhir.r5.renderers.utils.RenderingContext.ResourceRendererMode;
+import org.hl7.fhir.r5.renderers.utils.ResourceWrapper;
 import org.hl7.fhir.r5.terminologies.JurisdictionUtilities;
+import org.hl7.fhir.r5.terminologies.utilities.ValidationResult;
+import org.hl7.fhir.r5.utils.ToolingExtensions;
 import org.hl7.fhir.utilities.CommaSeparatedStringBuilder;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.VersionUtilities;
@@ -86,1723 +57,2144 @@ import org.hl7.fhir.utilities.xhtml.NodeType;
 import org.hl7.fhir.utilities.xhtml.XhtmlNode;
 import org.hl7.fhir.utilities.xhtml.XhtmlParser;
 
-import ca.uhn.fhir.model.api.TemporalPrecisionEnum;
+import ca.uhn.fhir.model.api.TemporalPrecisionEnum; 
 
-public class DataRenderer extends Renderer implements CodeResolver {
-  
-  // -- 1. context --------------------------------------------------------------
-    
-  public DataRenderer(RenderingContext context) {
-    super(context);
-  }
+public class DataRenderer extends Renderer implements CodeResolver { 
 
-  public DataRenderer(IWorkerContext worker) {
-    super(worker);
-  }
+  // -- 1. context -------------------------------------------------------------- 
 
-  // -- 2. Markdown support -------------------------------------------------------
-   
-  public static String processRelativeUrls(String markdown, String path) {
-    if (markdown == null) {
-      return "";
-    }
-    if (!Utilities.isAbsoluteUrl(path)) {
-      return markdown;
-    }
-    String basePath = path.contains("/") ? path.substring(0, path.lastIndexOf("/")+1) : path+"/";
-    StringBuilder b = new StringBuilder();
-    int i = 0;
-    while (i < markdown.length()) {
-      if (i < markdown.length()-3 && markdown.substring(i, i+2).equals("](")) {
-        int j = i + 2;
-        while (j < markdown.length() && markdown.charAt(j) != ')')
-          j++;
-        if (j < markdown.length()) {
-          String url = markdown.substring(i+2, j);
-          if (!Utilities.isAbsoluteUrl(url) && !url.startsWith("..")) {
-            // it's relative - so it's relative to the base URL
-              b.append("](");
-              b.append(basePath);
-          } else {
-            b.append("](");
-          }
-          i = i + 1;
-        } else 
-          b.append(markdown.charAt(i));
-      } else {
-        b.append(markdown.charAt(i));
-      }
-      i++;
-    }
-    return b.toString();
-  }
+  public DataRenderer(RenderingContext context) { 
+    super(context); 
+  } 
 
-  protected void addMarkdown(XhtmlNode x, String text, String path) throws FHIRFormatError, IOException, DefinitionException {
-    addMarkdown(x, processRelativeUrls(text, path));
-  }
-  
-  protected void addMarkdown(XhtmlNode x, String text) throws FHIRFormatError, IOException, DefinitionException {
-    if (text != null) {
-      // 1. custom FHIR extensions
-      while (text.contains("[[[")) {
-        String left = text.substring(0, text.indexOf("[[["));
-        String link = text.substring(text.indexOf("[[[")+3, text.indexOf("]]]"));
-        String right = text.substring(text.indexOf("]]]")+3);
-        String path = null;
-        String url = link;
-        String[] parts = link.split("\\#");
-        if (parts[0].contains(".")) {
-          path = parts[0];
-          parts[0] = parts[0].substring(0, parts[0].indexOf("."));
-        }
-        StructureDefinition p = getContext().getWorker().fetchResource(StructureDefinition.class, parts[0]);
-        if (p == null)
-          p = getContext().getWorker().fetchTypeDefinition(parts[0]);
-        if (p == null)
-          p = getContext().getWorker().fetchResource(StructureDefinition.class, link);
-        if (p != null) {
-          url = p.getWebPath();
-          if (url == null)
-            url = p.getUserString("filename");
-        } else
-          throw new DefinitionException("Unable to resolve markdown link "+link);
-  
-        text = left+"["+link+"]("+url+(path == null ? "" : "#"+path)+")"+right;
-      }
-  
-      // 2. markdown
-      String s = getContext().getMarkdown().process(text, "narrative generator");
-      XhtmlParser p = new XhtmlParser();
-      XhtmlNode m;
-      try {
-        m = p.parse("<div>"+s+"</div>", "div");
-      } catch (org.hl7.fhir.exceptions.FHIRFormatError e) {
-        throw new FHIRFormatError(e.getMessage(), e);
-      }
-      x.getChildNodes().addAll(m.getChildNodes());
-    }
-  }
+  public DataRenderer(IWorkerContext worker) { 
+    super(worker); 
+  } 
 
-  protected void smartAddText(XhtmlNode p, String text) {
-    if (text == null)
-      return;
-  
-    String[] lines = text.split("\\r\\n");
-    for (int i = 0; i < lines.length; i++) {
-      if (i > 0)
-        p.br();
-      p.addText(lines[i]);
-    }
-  }
- 
-  // -- 3. General Purpose Terminology Support -----------------------------------------
+  // -- 2. Markdown support ------------------------------------------------------- 
 
-  private static String month(String m) {
-    switch (m) {
-    case "1" : return "Jan";
-    case "2" : return "Feb";
-    case "3" : return "Mar";
-    case "4" : return "Apr";
-    case "5" : return "May";
-    case "6" : return "Jun";
-    case "7" : return "Jul";
-    case "8" : return "Aug";
-    case "9" : return "Sep";
-    case "10" : return "Oct";
-    case "11" : return "Nov";
-    case "12" : return "Dec";
-    default: return null;
-    }
-  }
-  
-  public static String describeVersion(String version) {
-    if (version.startsWith("http://snomed.info/sct")) {
-      String[] p = version.split("\\/");
-      String ed = null;
-      String dt = "";
-
-      if (p[p.length-2].equals("version")) {
-        ed = p[p.length-3];
-        String y = p[p.length-3].substring(4, 8);
-        String m = p[p.length-3].substring(2, 4); 
-        dt = " rel. "+month(m)+" "+y;
-      } else {
-        ed = p[p.length-1];
-      }
-      switch (ed) {
-      case "900000000000207008": return "Intl"+dt; 
-      case "731000124108": return "US"+dt; 
-      case "32506021000036107": return "AU"+dt; 
-      case "449081005": return "ES"+dt; 
-      case "554471000005108": return "DK"+dt; 
-      case "11000146104": return "NL"+dt; 
-      case "45991000052106": return "SE"+dt; 
-      case "999000041000000102": return "UK"+dt; 
-      case "20611000087101": return "CA"+dt; 
-      case "11000172109": return "BE"+dt; 
-      default: return "??"+dt; 
-      }      
-    } else {
-      return version;
-    }
-  }
-  
-  public static String describeSystem(String system) {
-    if (system == null)
-      return "[not stated]";
-    if (system.equals("http://loinc.org"))
-      return "LOINC";
-    if (system.startsWith("http://snomed.info"))
-      return "SNOMED CT";
-    if (system.equals("http://www.nlm.nih.gov/research/umls/rxnorm"))
-      return "RxNorm";
-    if (system.equals("http://hl7.org/fhir/sid/icd-9"))
-      return "ICD-9";
-    if (system.equals("http://dicom.nema.org/resources/ontology/DCM"))
-      return "DICOM";
-    if (system.equals("http://unitsofmeasure.org"))
-      return "UCUM";
-  
-    return system;
-  }
-
-  public String displaySystem(String system) {
-    if (system == null)
-      return "[not stated]";
-    if (system.equals("http://loinc.org"))
-      return "LOINC";
-    if (system.startsWith("http://snomed.info"))
-      return "SNOMED CT";
-    if (system.equals("http://www.nlm.nih.gov/research/umls/rxnorm"))
-      return "RxNorm";
-    if (system.equals("http://hl7.org/fhir/sid/icd-9"))
-      return "ICD-9";
-    if (system.equals("http://dicom.nema.org/resources/ontology/DCM"))
-      return "DICOM";
-    if (system.equals("http://unitsofmeasure.org"))
-      return "UCUM";
-
-    CodeSystem cs = context.getContext().fetchCodeSystem(system);
-    if (cs != null) {
-      return cs.present();
-    }
-    return tails(system);
-  }
-
-  private String tails(String system) {
-    if (system.contains("/")) {
-      return system.substring(system.lastIndexOf("/")+1);
-    } else {
-      return "unknown";
-    }
-  }
-
-  protected String makeAnchor(String codeSystem, String code) {
-    String s = codeSystem+'-'+code;
-    StringBuilder b = new StringBuilder();
-    for (char c : s.toCharArray()) {
-      if (Character.isAlphabetic(c) || Character.isDigit(c) || c == '.')
-        b.append(c);
-      else
-        b.append('-');
-    }
-    return b.toString();
-  }
-
-  private String lookupCode(String system, String version, String code) {
-    if (JurisdictionUtilities.isJurisdiction(system)) {
-      return JurisdictionUtilities.displayJurisdiction(system+"#"+code);
-    }
-    ValidationResult t = getContext().getWorker().validateCode(getContext().getTerminologyServiceOptions().withVersionFlexible(true), system, version, code, null);
-
-    if (t != null && t.getDisplay() != null)
-      return t.getDisplay();
-    else
-      return code;
-  }
-
-  protected String describeLang(String lang) {
-    // special cases:
-    if ("fr-CA".equals(lang)) {
-      return "French (Canadian)"; // this one was omitted from the value set
-    }
-    ValueSet v = getContext().getWorker().fetchResource(ValueSet.class, "http://hl7.org/fhir/ValueSet/languages");
-    if (v != null) {
-      ConceptReferenceComponent l = null;
-      for (ConceptReferenceComponent cc : v.getCompose().getIncludeFirstRep().getConcept()) {
-        if (cc.getCode().equals(lang))
-          l = cc;
-      }
-      if (l == null) {
-        if (lang.contains("-")) {
-          lang = lang.substring(0, lang.indexOf("-"));
-        }
-        for (ConceptReferenceComponent cc : v.getCompose().getIncludeFirstRep().getConcept()) {
-          if (cc.getCode().equals(lang)) {
-            l = cc;
-            break;
-          }
-        }
-        if (l == null) {
-          for (ConceptReferenceComponent cc : v.getCompose().getIncludeFirstRep().getConcept()) {
-            if (cc.getCode().startsWith(lang+"-")) {
-              l = cc;
-              break;
-            }
-          }
-        }
-      }
-      if (l != null) {
-        if (lang.contains("-"))
-          lang = lang.substring(0, lang.indexOf("-"));
-        String en = l.getDisplay();
-        String nativelang = null;
-        for (ConceptReferenceDesignationComponent cd : l.getDesignation()) {
-          if (cd.getLanguage().equals(lang))
-            nativelang = cd.getValue();
-        }
-        if (nativelang == null)
-          return en+" ("+lang+")";
-        else
-          return nativelang+" ("+en+", "+lang+")";
-      }
-    }
-    return lang;
-  }
-
-  private boolean isCanonical(String path) {
-    if (!path.endsWith(".url")) 
-      return false;
-    String t = path.substring(0, path.length()-4);
-    StructureDefinition sd = getContext().getWorker().fetchTypeDefinition(t);
-    if (sd == null)
-      return false;
-    if (VersionUtilities.getCanonicalResourceNames(getContext().getWorker().getVersion()).contains(t)) {
-      return true;
-    }
-    if (Utilities.existsInList(t, 
-        "ActivityDefinition", "CapabilityStatement", "ChargeItemDefinition", "Citation", "CodeSystem",
-        "CompartmentDefinition", "ConceptMap", "ConditionDefinition", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable",
-        "ExampleScenario", "GraphDefinition", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "PlanDefinition"
-        ))
-      return true;
-    return false;
-  }
-
-  // -- 4. Language support ------------------------------------------------------
-  
-  protected String translate(String source, String content) {
-    return content;
-  }
-
-  public String gt(@SuppressWarnings("rawtypes") PrimitiveType value) {
-    return value.primitiveValue();
-  }
-  
-  // -- 6. General purpose extension rendering ---------------------------------------------- 
-
-  public boolean hasRenderableExtensions(DataType element) {
-    for (Extension ext : element.getExtension()) {
-      if (canRender(ext)) {
-        return true;
-      }
-    }
-    return false;
-  }
-  
-  public boolean hasRenderableExtensions(BackboneType element) {
-    for (Extension ext : element.getExtension()) {
-      if (canRender(ext)) {
-        return true;
-      }
-    }
-    return element.hasModifierExtension();  
-  }
-  
-  private String getExtensionLabel(Extension ext) {
-    StructureDefinition sd = context.getWorker().fetchResource(StructureDefinition.class, ext.getUrl());
-    if (sd != null && ext.hasValue() && ext.getValue().isPrimitive() && sd.hasSnapshot()) {
-      for (ElementDefinition ed : sd.getSnapshot().getElement()) {
-        if (Utilities.existsInList(ed.getPath(), "Extension", "Extension.value[x]") && ed.hasLabel()) {
-          return ed.getLabel();
-        }
-      }
-    }
-    return null;    
-  }
-  
-  private boolean canRender(Extension ext) {
-    return getExtensionLabel(ext) != null;
-  }
-
-  public void renderExtensionsInList(XhtmlNode ul, DataType element) throws FHIRFormatError, DefinitionException, IOException {
-    for (Extension ext : element.getExtension()) {
-      if (canRender(ext)) {
-        String lbl = getExtensionLabel(ext);
-        XhtmlNode li = ul.li();
-        li.tx(lbl);
-        li.tx(": ");
-        render(li, ext.getValue());
-      }
-    }
-  }
-  
-  public void renderExtensionsInList(XhtmlNode ul, BackboneType element) throws FHIRFormatError, DefinitionException, IOException {
-    for (Extension ext : element.getModifierExtension()) {
-      if (canRender(ext)) {
-        String lbl = getExtensionLabel(ext);
-        XhtmlNode li = ul.li();
-        li = li.b();
-        li.tx(lbl);
-        li.tx(": ");        
-        render(li, ext.getValue());
-      } else {
-        // somehow have to do better than this 
-        XhtmlNode li = ul.li();
-        li.b().tx("WARNING: Unrenderable Modifier Extension!");
-      }
-    }
-    for (Extension ext : element.getExtension()) {
-      if (canRender(ext)) {
-        String lbl = getExtensionLabel(ext);
-        XhtmlNode li = ul.li();
-        li.tx(lbl);
-        li.tx(": ");
-        render(li, ext.getValue());
-      }
-    }
-  }
-  
-  public void renderExtensionsInText(XhtmlNode div, DataType element, String sep) throws FHIRFormatError, DefinitionException, IOException {
-    boolean first = true;
-    for (Extension ext : element.getExtension()) {
-      if (canRender(ext)) {
-        if (first) {
-          first = false;
-        } else {
-          div.tx(sep);
-          div.tx(" ");
-        }
-         
-        String lbl = getExtensionLabel(ext);
-        div.tx(lbl);
-        div.tx(": ");
-        render(div, ext.getValue());
-      }
-    }
-  }
-  
-  public void renderExtensionsInList(XhtmlNode div, BackboneType element, String sep) throws FHIRFormatError, DefinitionException, IOException {
-    boolean first = true;
-    for (Extension ext : element.getModifierExtension()) {
-      if (first) {
-        first = false;
-      } else {
-        div.tx(sep);
-        div.tx(" ");
-      }
-      if (canRender(ext)) {
-        String lbl = getExtensionLabel(ext);
-        XhtmlNode b = div.b();
-        b.tx(lbl);
-        b.tx(": ");
-        render(div, ext.getValue());
-      } else {
-        // somehow have to do better than this 
-        div.b().tx("WARNING: Unrenderable Modifier Extension!");
-      }
-    }
-    for (Extension ext : element.getExtension()) {
-      if (canRender(ext)) {
-        if (first) {
-          first = false;
-        } else {
-          div.tx(sep);
-          div.tx(" ");
-        }
-         
-        String lbl = getExtensionLabel(ext);
-        div.tx(lbl);
-        div.tx(": ");
-        render(div, ext.getValue());
-      }
-    }
-
-  }
-  
-  // -- 6. Data type Rendering ---------------------------------------------- 
-
-  public static String display(IWorkerContext context, DataType type) {
-    return new DataRenderer(new RenderingContext(context, null, null, "http://hl7.org/fhir/R4", "", null, ResourceRendererMode.END_USER, GenerationRules.VALID_RESOURCE)).display(type);
-  }
-  
-  public String displayBase(Base b) {
-    if (b instanceof DataType) {
-      return display((DataType) b);
-    } else {
-      return "No display for "+b.fhirType();      
-    }
-  }
-  
-  public String display(DataType type) {
-    if (type == null || type.isEmpty()) {
-      return "";
-    }
-    
-    if (type instanceof Coding) {
-      return displayCoding((Coding) type);
-    } else if (type instanceof CodeableConcept) {
-      return displayCodeableConcept((CodeableConcept) type);
-    } else if (type instanceof Identifier) {
-      return displayIdentifier((Identifier) type);
-    } else if (type instanceof HumanName) {
-      return displayHumanName((HumanName) type);
-    } else if (type instanceof Address) {
-      return displayAddress((Address) type);
-    } else if (type instanceof ContactPoint) {
-      return displayContactPoint((ContactPoint) type);
-    } else if (type instanceof Quantity) {
-      return displayQuantity((Quantity) type);
-    } else if (type instanceof Range) {
-      return displayRange((Range) type);
-    } else if (type instanceof Period) {
-      return displayPeriod((Period) type);
-    } else if (type instanceof Timing) {
-      return displayTiming((Timing) type);
-    } else if (type instanceof SampledData) {
-      return displaySampledData((SampledData) type);
-    } else if (type.isDateTime()) {
-      return displayDateTime((BaseDateTimeType) type);
-    } else if (type.isPrimitive()) {
-      return type.primitiveValue();
-    } else {
-      return "No display for "+type.fhirType();
-    }
-  }
-
-  private String displayDateTime(BaseDateTimeType type) {
-    if (!type.hasPrimitiveValue()) {
-      return "";
-    }
-    
-    // relevant inputs in rendering context:
-    // timeZone, dateTimeFormat, locale, mode
-    //   timezone - application specified timezone to use. 
-    //        null = default to the time of the date/time itself
-    //   dateTimeFormat - application specified format for date times
-    //        null = default to ... depends on mode
-    //   mode - if rendering mode is technical, format defaults to XML format
-    //   locale - otherwise, format defaults to SHORT for the Locale (which defaults to default Locale)  
-    if (isOnlyDate(type.getPrecision())) {
-      
-      DateTimeFormatter fmt = getDateFormatForPrecision(type);      
-      LocalDate date = LocalDate.of(type.getYear(), type.getMonth()+1, type.getDay());
-      return fmt.format(date);
-    }
-
-    DateTimeFormatter fmt = context.getDateTimeFormat();
-    if (fmt == null) {
-      if (context.isTechnicalMode()) {
-        fmt = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
-      } else {
-        fmt = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT).withLocale(context.getLocale());
-      }
-    }
-    ZonedDateTime zdt = ZonedDateTime.parse(type.primitiveValue());
-    ZoneId zone = context.getTimeZoneId();
-    if (zone != null) {
-      zdt = zdt.withZoneSameInstant(zone);
-    }
-    return fmt.format(zdt);
-  }
-
-  private DateTimeFormatter getDateFormatForPrecision(BaseDateTimeType type) {
-    DateTimeFormatter fmt = getContextDateFormat(type);
-    if (fmt != null) {
-      return fmt;
-    }
-    if (context.isTechnicalMode()) {
-      switch (type.getPrecision()) {
-      case YEAR:
-        return new DateTimeFormatterBuilder().appendValue(YEAR, 4, 10, SignStyle.EXCEEDS_PAD).toFormatter();
-      case MONTH:
-        return  new DateTimeFormatterBuilder().appendValue(YEAR, 4, 10, SignStyle.EXCEEDS_PAD).appendLiteral('-').appendValue(MONTH_OF_YEAR, 2).toFormatter();
-      default:
-        return DateTimeFormatter.ISO_DATE;
-      }
-    } else {
-      switch (type.getPrecision()) {
-      case YEAR:
-        return DateTimeFormatter.ofPattern("uuuu");
-      case MONTH:
-        return DateTimeFormatter.ofPattern("MMM uuuu");
-      default:
-        return DateTimeFormatter.ofLocalizedDate(FormatStyle.SHORT).withLocale(context.getLocale());
-      }
-    }
-  }
-
-  private DateTimeFormatter getContextDateFormat(BaseDateTimeType type) {
-    switch (type.getPrecision()) {
-    case YEAR:
-      return context.getDateYearFormat();
-    case MONTH:
-      return context.getDateYearMonthFormat();
-    default:
-      return context.getDateFormat();
-    }
-  }   
-  
-  private boolean isOnlyDate(TemporalPrecisionEnum temporalPrecisionEnum) {
-    return temporalPrecisionEnum == TemporalPrecisionEnum.YEAR || temporalPrecisionEnum == TemporalPrecisionEnum.MONTH || temporalPrecisionEnum == TemporalPrecisionEnum.DAY;
-  }
-
-  public String display(BaseWrapper type) {
-    return "to do";   
-  }
-
-  public void render(XhtmlNode x, BaseWrapper type) throws FHIRFormatError, DefinitionException, IOException  {
-    Base base = null;
-    try {
-      base = type.getBase();
-    } catch (FHIRException | IOException e) {
-      x.tx("Error: " + e.getMessage()); // this shouldn't happen - it's an error in the library itself
-      return;
-    }
-    if (base instanceof DataType) {
-      render(x, (DataType) base);
-    } else {
-      x.tx("to do: "+base.fhirType());
-    }
-  }
-  
-  public void renderBase(XhtmlNode x, Base b) throws FHIRFormatError, DefinitionException, IOException {
-    if (b instanceof DataType) {
-      render(x, (DataType) b);
-    } else {
-      x.tx("No display for "+b.fhirType());      
-    }
-  }
-  
-  public void render(XhtmlNode x, DataType type) throws FHIRFormatError, DefinitionException, IOException {
-    if (type instanceof BaseDateTimeType) {
-      x.tx(displayDateTime((BaseDateTimeType) type));
-    } else if (type instanceof UriType) {
-      renderUri(x, (UriType) type);
-    } else if (type instanceof Annotation) {
-      renderAnnotation(x, (Annotation) type);
-    } else if (type instanceof Coding) {
-      renderCodingWithDetails(x, (Coding) type);
-    } else if (type instanceof CodeableConcept) {
-      renderCodeableConcept(x, (CodeableConcept) type);
-    } else if (type instanceof Identifier) {
-      renderIdentifier(x, (Identifier) type);
-    } else if (type instanceof HumanName) {
-      renderHumanName(x, (HumanName) type);
-    } else if (type instanceof Address) {
-      renderAddress(x, (Address) type);
-    } else if (type instanceof Expression) {
-      renderExpression(x, (Expression) type);
-    } else if (type instanceof Money) {
-      renderMoney(x, (Money) type);
-    } else if (type instanceof ContactPoint) {
-      renderContactPoint(x, (ContactPoint) type);
-    } else if (type instanceof Quantity) {
-      renderQuantity(x, (Quantity) type);
-    } else if (type instanceof Range) {
-      renderRange(x, (Range) type);
-    } else if (type instanceof Period) {
-      renderPeriod(x, (Period) type);
-    } else if (type instanceof Timing) {
-      renderTiming(x, (Timing) type);
-    } else if (type instanceof SampledData) {
-      renderSampledData(x, (SampledData) type);
-    } else if (type instanceof Reference) {
-      renderReference(x, (Reference) type);
-    } else if (type instanceof CodeableReference) {
-      CodeableReference cr = (CodeableReference) type;
-      if (cr.hasConcept()) {
-        renderCodeableConcept(x, cr.getConcept());
+  public static String processRelativeUrls(String markdown, String path) { 
+    if (markdown == null) { 
+      return ""; 
+    } 
+    if (!Utilities.isAbsoluteUrl(path)) { 
+      return markdown; 
+    } 
+    String basePath = path.contains("/") ? path.substring(0, path.lastIndexOf("/")+1) : path+"/"; 
+    StringBuilder b = new StringBuilder(); 
+    int i = 0; 
+    while (i < markdown.length()) { 
+      if (i < markdown.length()-3 && markdown.substring(i, i+2).equals("](")) { 
+        int j = i + 2; 
+        while (j < markdown.length() && markdown.charAt(j) != ')') 
+          j++; 
+        if (j < markdown.length()) { 
+          String url = markdown.substring(i+2, j); 
+          if (!Utilities.isAbsoluteUrl(url) && !url.startsWith("..")) { 
+            // it's relative - so it's relative to the base URL 
+            b.append("]("); 
+            b.append(basePath); 
+          } else { 
+            b.append("]("); 
+          } 
+          i = i + 1; 
+        } else  
+          b.append(markdown.charAt(i)); 
       } else { 
-        renderReference(x, cr.getReference());
-      }
-    } else if (type instanceof MarkdownType) {
-      addMarkdown(x, ((MarkdownType) type).asStringValue());
-    } else if (type instanceof Base64BinaryType) {
-      Base64BinaryType b64 = (Base64BinaryType) type;
-      x.tx("(base64 data - "+(b64.getValue() == null ? "0" : b64.getValue().length)+" bytes)");
-    } else if (type.isPrimitive()) {
-      x.tx(type.primitiveValue());
-    } else {
-      x.tx("No display for "+type.fhirType());      
-    }
+        b.append(markdown.charAt(i)); 
+      } 
+      i++; 
+    } 
+    return b.toString(); 
+  } 
+
+  protected void addMarkdown(XhtmlNode x, String text, String path) throws FHIRFormatError, IOException, DefinitionException { 
+    addMarkdown(x, processRelativeUrls(text, path)); 
+  } 
+
+  protected void addMarkdown(XhtmlNode x, String text) throws FHIRFormatError, IOException, DefinitionException { 
+    if (text != null) { 
+      // 1. custom FHIR extensions 
+      while (text.contains("[[[")) { 
+        String left = text.substring(0, text.indexOf("[[[")); 
+        String link = text.substring(text.indexOf("[[[")+3, text.indexOf("]]]")); 
+        String right = text.substring(text.indexOf("]]]")+3); 
+        String path = null; 
+        String url = link; 
+        String[] parts = link.split("\\#"); 
+        if (parts[0].contains(".")) { 
+          path = parts[0]; 
+          parts[0] = parts[0].substring(0, parts[0].indexOf(".")); 
+        } 
+        StructureDefinition p = getContext().getWorker().fetchResource(StructureDefinition.class, parts[0]); 
+        if (p == null) { 
+          p = getContext().getWorker().fetchTypeDefinition(parts[0]); 
+        } 
+        if (context.getTypeMap().containsKey(parts[0])) { 
+          p = getContext().getWorker().fetchTypeDefinition(context.getTypeMap().get(parts[0]));           
+        } 
+        if (p == null) { 
+          p = getContext().getWorker().fetchResource(StructureDefinition.class, link); 
+        } 
+        if (p != null) { 
+          if ("Extension".equals(p.getType())) { 
+            path = null; 
+          } else if (p.hasSnapshot()) { 
+            path = p.getSnapshot().getElementFirstRep().getPath(); 
+          } else if (Utilities.isAbsoluteUrl(path)) { 
+            path = null; 
+          } 
+          url = p.getWebPath(); 
+          if (url == null) { 
+            url = p.getUserString("filename"); 
+          } 
+        } else { 
+          throw new DefinitionException(context.formatPhrase(RenderingContext.DATA_REND_MKDWN_LNK, link) + " "); 
+        } 
+
+        text = left+"["+link+"]("+url+(path == null ? "" : "#"+path)+")"+right; 
+      } 
+
+      // 2. markdown 
+      String s = getContext().getMarkdown().process(text, "narrative generator"); 
+      XhtmlParser p = new XhtmlParser(); 
+      XhtmlNode m; 
+      try { 
+        m = p.parse("<div>"+s+"</div>", "div"); 
+      } catch (org.hl7.fhir.exceptions.FHIRFormatError e) { 
+        throw new FHIRFormatError(e.getMessage(), e); 
+      } 
+      x.getChildNodes().addAll(m.getChildNodes()); 
+    } 
+  } 
+
+  protected void smartAddText(XhtmlNode p, String text) { 
+    if (text == null) 
+      return; 
+
+    String[] lines = text.split("\\r\\n"); 
+    for (int i = 0; i < lines.length; i++) { 
+      if (i > 0) 
+        p.br(); 
+      p.addText(lines[i]); 
+    } 
+  } 
+
+  // -- 3. General Purpose Terminology Support ----------------------------------------- 
+
+  private static String snMonth(String m) { 
+    switch (m) { 
+    case "1" : return "Jan"; 
+    case "2" : return "Feb"; 
+    case "3" : return "Mar"; 
+    case "4" : return "Apr"; 
+    case "5" : return "May"; 
+    case "6" : return "Jun"; 
+    case "7" : return "Jul"; 
+    case "8" : return "Aug"; 
+    case "9" : return "Sep"; 
+    case "10" : return "Oct"; 
+    case "11" : return "Nov"; 
+    case "12" : return "Dec"; 
+    default: return null; 
+    } 
+  } 
+
+  public static String describeVersion(String version) { 
+    if (version.startsWith("http://snomed.info/sct")) { 
+      String[] p = version.split("\\/"); 
+      String ed = null; 
+      String dt = ""; 
+
+      if (p[p.length-2].equals("version")) { 
+        ed = p[p.length-3]; 
+        String y = p[p.length-3].substring(4, 8); 
+        String m = p[p.length-3].substring(2, 4);  
+        dt = " rel. "+snMonth(m)+" "+y; 
+      } else { 
+        ed = p[p.length-1]; 
+      } 
+      switch (ed) { 
+      case "900000000000207008": return "Intl"+dt;  
+      case "731000124108": return "US"+dt;  
+      case "32506021000036107": return "AU"+dt;  
+      case "449081005": return "ES"+dt;  
+      case "554471000005108": return "DK"+dt;  
+      case "11000146104": return "NL"+dt;  
+      case "45991000052106": return "SE"+dt;  
+      case "999000041000000102": return "UK"+dt;  
+      case "20611000087101": return "CA"+dt;  
+      case "11000172109": return "BE"+dt;  
+      default: return "??"+dt;  
+      }       
+    } else { 
+      return version; 
+    } 
+  } 
+
+  public String displaySystem(String system) { 
+    if (system == null) 
+      return (context.formatPhrase(RenderingContext.DATA_REND_NOT_STAT)); 
+    if (system.equals("http://loinc.org")) 
+      return (context.formatPhrase(RenderingContext.DATA_REND_LOINC)); 
+    if (system.startsWith("http://snomed.info")) 
+      return (context.formatPhrase(RenderingContext.DATA_REND_SNOMED)); 
+    if (system.equals("http://www.nlm.nih.gov/research/umls/rxnorm")) 
+      return (context.formatPhrase(RenderingContext.DATA_REND_RXNORM)); 
+    if (system.equals("http://hl7.org/fhir/sid/icd-9")) 
+      return (context.formatPhrase(RenderingContext.DATA_REND_ICD)); 
+    if (system.equals("http://dicom.nema.org/resources/ontology/DCM")) 
+      return (context.formatPhrase(RenderingContext.DATA_REND_DICOM)); 
+    if (system.equals("http://unitsofmeasure.org")) 
+      return (context.formatPhrase(RenderingContext.GENERAL_UCUM)); 
+
+    CodeSystem cs = context.getContext().fetchCodeSystem(system); 
+    if (cs != null) { 
+      return crPresent(cs); 
+    } 
+    return tails(system); 
+  } 
+
+  private String crPresent(CanonicalResource cr) { 
+    if (cr.hasUserData("presentation")) { 
+      return cr.getUserString("presentation"); 
+    } 
+    if (cr.hasTitle()) 
+      return context.getTranslated(cr.getTitleElement()); 
+    if (cr.hasName()) 
+      return context.getTranslated(cr.getNameElement()); 
+    return cr.toString(); 
+  } 
+
+  private String tails(String system) { 
+    if (system.contains("/")) { 
+      return system.substring(system.lastIndexOf("/")+1); 
+    } else { 
+      return (context.formatPhrase(RenderingContext.DATA_REND_UNKNWN)); 
+    } 
+  } 
+
+  protected String makeAnchor(String codeSystem, String code) { 
+    String s = codeSystem+'-'+code; 
+    StringBuilder b = new StringBuilder(); 
+    for (char c : s.toCharArray()) { 
+      if (Character.isAlphabetic(c) || Character.isDigit(c) || c == '.') 
+        b.append(c); 
+      else 
+        b.append('-'); 
+    } 
+    return b.toString(); 
+  } 
+
+  private String lookupCode(String system, String version, String code) { 
+    if (JurisdictionUtilities.isJurisdiction(system)) { 
+      return JurisdictionUtilities.displayJurisdiction(system+"#"+code); 
+    } 
+    ValidationResult t = getContext().getWorker().validateCode(getContext().getTerminologyServiceOptions().withLanguage(context.getLocale().toString().replace("_", "-")).withVersionFlexible(true), system, version, code, null); 
+
+    if (t != null && t.getDisplay() != null) 
+      return t.getDisplay(); 
+    else 
+      return code; 
+  } 
+
+  protected String describeLang(String lang) { 
+    // special cases: 
+    if ("fr-CA".equals(lang)) { 
+      return "French (Canadian)"; // this one was omitted from the value set 
+    } 
+    ValueSet v = getContext().getWorker().findTxResource(ValueSet.class, "http://hl7.org/fhir/ValueSet/languages"); 
+    if (v != null) { 
+      ConceptReferenceComponent l = null; 
+      for (ConceptReferenceComponent cc : v.getCompose().getIncludeFirstRep().getConcept()) { 
+        if (cc.getCode().equals(lang)) 
+          l = cc; 
+      } 
+      if (l == null) { 
+        if (lang.contains("-")) { 
+          lang = lang.substring(0, lang.indexOf("-")); 
+        } 
+        for (ConceptReferenceComponent cc : v.getCompose().getIncludeFirstRep().getConcept()) { 
+          if (cc.getCode().equals(lang)) { 
+            l = cc; 
+            break; 
+          } 
+        } 
+        if (l == null) { 
+          for (ConceptReferenceComponent cc : v.getCompose().getIncludeFirstRep().getConcept()) { 
+            if (cc.getCode().startsWith(lang+"-")) { 
+              l = cc; 
+              break; 
+            } 
+          } 
+        } 
+      } 
+      if (l != null) { 
+        if (lang.contains("-")) 
+          lang = lang.substring(0, lang.indexOf("-")); 
+        String en = l.getDisplay(); 
+        String nativelang = null; 
+        for (ConceptReferenceDesignationComponent cd : l.getDesignation()) { 
+          if (cd.getLanguage().equals(lang)) 
+            nativelang = cd.getValue(); 
+        } 
+        if (nativelang == null) 
+          return en+" ("+lang+")"; 
+        else 
+          return nativelang+" ("+en+", "+lang+")"; 
+      } 
+    } 
+    return lang; 
+  } 
+
+  private boolean isCanonical(String path) { 
+    if (!path.endsWith(".url"))  
+      return false; 
+    String t = path.substring(0, path.length()-4); 
+    StructureDefinition sd = getContext().getWorker().fetchTypeDefinition(t); 
+    if (sd == null) 
+      return false; 
+    if (VersionUtilities.getCanonicalResourceNames(getContext().getWorker().getVersion()).contains(t)) { 
+      return true; 
+    } 
+    if (Utilities.existsInList(t,  
+        "ActivityDefinition", "CapabilityStatement", "ChargeItemDefinition", "Citation", "CodeSystem", 
+        "CompartmentDefinition", "ConceptMap", "ConditionDefinition", "EventDefinition", "Evidence", "EvidenceReport", "EvidenceVariable", 
+        "ExampleScenario", "GraphDefinition", "ImplementationGuide", "Library", "Measure", "MessageDefinition", "NamingSystem", "PlanDefinition" 
+        )) 
+      return true; 
+    return false; 
+  } 
+
+  // -- 4. Language support ------------------------------------------------------ 
+
+  public String gt(@SuppressWarnings("rawtypes") PrimitiveType value) { 
+    return context.getTranslated(value); 
+  } 
+
+  public String gt(ResourceWrapper value) { 
+    return context.getTranslated(value); 
+  } 
+
+  // -- 6. General purpose extension rendering ----------------------------------------------  
+
+  public boolean hasRenderableExtensions(DataType element) { 
+    for (Extension ext : element.getExtension()) { 
+      if (canRender(ext)) { 
+        return true; 
+      } 
+    } 
+    return false; 
+  } 
+
+  public boolean hasRenderableExtensions(BackboneType element) { 
+    for (Extension ext : element.getExtension()) { 
+      if (canRender(ext)) { 
+        return true; 
+      } 
+    } 
+    return element.hasModifierExtension();   
+  } 
+
+  public boolean hasRenderableExtensions(ResourceWrapper element) { 
+    for (ResourceWrapper ext : element.extensions()) { 
+      if (canRender(ext)) { 
+        return true; 
+      } 
+    } 
+    return false; 
+  } 
+
+  private String getExtensionLabel(Extension ext) { 
+    StructureDefinition sd = context.getWorker().fetchResource(StructureDefinition.class, ext.getUrl()); 
+    if (sd != null && ext.hasValue() && ext.getValue().isPrimitive() && sd.hasSnapshot()) { 
+      for (ElementDefinition ed : sd.getSnapshot().getElement()) { 
+        if (Utilities.existsInList(ed.getPath(), "Extension", "Extension.value[x]") && ed.hasLabel()) { 
+          return context.getTranslated(ed.getLabelElement()); 
+        } 
+      } 
+    } 
+    return null;     
+  } 
+
+  private String getExtensionLabel(ResourceWrapper ext) { 
+    StructureDefinition sd = context.getWorker().fetchResource(StructureDefinition.class, ext.primitiveValue("url")); 
+    if (sd != null && ext.has("value") && ext.child("value").isPrimitive() && sd.hasSnapshot()) { 
+      for (ElementDefinition ed : sd.getSnapshot().getElement()) { 
+        if (Utilities.existsInList(ed.getPath(), "Extension", "Extension.value[x]") && ed.hasLabel()) { 
+          return context.getTranslated(ed.getLabelElement()); 
+        } 
+      } 
+    } 
+    return null;     
+  } 
+
+  private boolean canRender(Extension ext) { 
+    return getExtensionLabel(ext) != null; 
+  } 
+
+
+  private boolean canRender(ResourceWrapper ext) { 
+    StructureDefinition sd = context.getWorker().fetchResource(StructureDefinition.class, ext.primitiveValue("url")); 
+    if (sd != null && ext.has("value") && ext.isPrimitive("value") && sd.hasSnapshot()) { 
+      for (ElementDefinition ed : sd.getSnapshot().getElement()) { 
+        if (Utilities.existsInList(ed.getPath(), "Extension", "Extension.value[x]") && ed.hasLabel()) { 
+          return true; 
+        } 
+      } 
+    } 
+    return false;     
   }
 
-  private void renderReference(XhtmlNode x, Reference ref) {
-     if (ref.hasDisplay()) {
-       x.tx(ref.getDisplay());
-     } else if (ref.hasReference()) {
-       x.tx(ref.getReference());
-     } else {
-       x.tx("??");
-     }
+  public void renderExtensionsInList(RenderingStatus status, XhtmlNode ul, ResourceWrapper element) throws FHIRFormatError, DefinitionException, IOException { 
+    for (ResourceWrapper ext : element.extensions()) { 
+      if (canRender(ext)) { 
+        String lbl = getExtensionLabel(ext); 
+        XhtmlNode li = ul.li(); 
+        li.tx(lbl); 
+        li.tx(": "); 
+        renderDataType(status, li, ext.child("value")); 
+      } 
+    } 
+  } 
+
+  //  public void renderExtensionsInList(XhtmlNode ul, BackboneType element) throws FHIRFormatError, DefinitionException, IOException { 
+  //    for (Extension ext : element.getModifierExtension()) { 
+  //      if (canRender(ext)) { 
+  //        String lbl = getExtensionLabel(ext); 
+  //        XhtmlNode li = ul.li(); 
+  //        li = li.b(); 
+  //        li.tx(lbl); 
+  //        li.tx(": ");         
+  //        render(li, ext.getValue()); 
+  //      } else { 
+  //        // somehow have to do better than this  
+  //        XhtmlNode li = ul.li(); 
+  //        li.b().tx(context.formatPhrase(RenderingContext.DATA_REND_UNRD_EX)); 
+  //      } 
+  //    } 
+  //    for (Extension ext : element.getExtension()) { 
+  //      if (canRender(ext)) { 
+  //        String lbl = getExtensionLabel(ext); 
+  //        XhtmlNode li = ul.li(); 
+  //        li.tx(lbl); 
+  //        li.tx(": "); 
+  //        render(li, ext.getValue()); 
+  //      } 
+  //    } 
+  //  } 
+  //   
+  public void renderExtensionsInText(RenderingStatus status, XhtmlNode div, ResourceWrapper element, String sep) throws FHIRFormatError, DefinitionException, IOException { 
+    boolean first = true; 
+    for (ResourceWrapper ext : element.extensions()) { 
+      if (canRender(ext)) { 
+        if (first) { 
+          first = false; 
+        } else { 
+          div.tx(sep); 
+          div.tx(" "); 
+        } 
+
+        String lbl = getExtensionLabel(ext); 
+        div.tx(lbl); 
+        div.tx(": "); 
+        renderDataType(status, div, ext.child("value")); 
+      } 
+    } 
+  } 
+
+  //  public void renderExtensionsInList(XhtmlNode div, BackboneType element, String sep) throws FHIRFormatError, DefinitionException, IOException { 
+  //    boolean first = true; 
+  //    for (Extension ext : element.getModifierExtension()) { 
+  //      if (first) { 
+  //        first = false; 
+  //      } else { 
+  //        div.tx(sep); 
+  //        div.tx(" "); 
+  //      } 
+  //      if (canRender(ext)) { 
+  //        String lbl = getExtensionLabel(ext); 
+  //        XhtmlNode b = div.b(); 
+  //        b.tx(lbl); 
+  //        b.tx(": "); 
+  //        render(div, ext.getValue()); 
+  //      } else { 
+  //        // somehow have to do better than this  
+  //        div.b().tx(context.formatPhrase(RenderingContext.DATA_REND_UNRD_EX)); 
+  //      } 
+  //    } 
+  //    for (Extension ext : element.getExtension()) { 
+  //      if (canRender(ext)) { 
+  //        if (first) { 
+  //          first = false; 
+  //        } else { 
+  //          div.tx(sep); 
+  //          div.tx(" "); 
+  //        } 
+  //          
+  //        String lbl = getExtensionLabel(ext); 
+  //        div.tx(lbl); 
+  //        div.tx(": "); 
+  //        render(div, ext.getValue()); 
+  //      } 
+  //    } 
+  // 
+  //  } 
+
+  // -- 6. Data type Rendering ----------------------------------------------  
+
+  public static String display(IWorkerContext context, DataType type) { 
+    return new DataRenderer(new RenderingContext(context, null, null, "http://hl7.org/fhir/R4", "", null, ResourceRendererMode.END_USER, GenerationRules.VALID_RESOURCE)).displayDataType(type); 
+  } 
+
+  public String displayBase(Base b) { 
+    if (b instanceof DataType) { 
+      return displayDataType((DataType) b); 
+    } else { 
+      return (context.formatPhrase(RenderingContext.DATA_REND_NO_DISP, b.fhirType()) + " ");       
+    } 
+  } 
+
+  public String displayDataType(DataType type) { 
+    if (type == null) {
+      return "";
+    }
+    return displayDataType(wrapNC(type));
   }
 
-  public void renderDateTime(XhtmlNode x, Base e) {
-    if (e.hasPrimitiveValue()) {
-      x.addText(displayDateTime((DateTimeType) e));
-    }
-  }
+  public String displayDataType(ResourceWrapper type) { 
+    if (type == null || type.isEmpty()) { 
+      return ""; 
+    } 
 
-  public void renderDate(XhtmlNode x, Base e) {
-    if (e.hasPrimitiveValue()) {
-      x.addText(displayDateTime((DateType) e));
-    }
-  }
-
-  public void renderDateTime(XhtmlNode x, String s) {
-    if (s != null) {
-      DateTimeType dt = new DateTimeType(s);
-      x.addText(displayDateTime(dt));
-    }
-  }
-
-  protected void renderUri(XhtmlNode x, UriType uri) {
-    if (uri.getValue().startsWith("mailto:")) {
-      x.ah(uri.getValue()).addText(uri.getValue().substring(7));
-    } else {
-      Resource r = context.getContext().fetchResource(Resource.class, uri.getValue());
-      if (r != null && r.getWebPath() != null) {
-        if (r instanceof CanonicalResource) {
-          x.ah(r.getWebPath()).addText(((CanonicalResource) r).present());          
-        } else {
-          x.ah(r.getWebPath()).addText(uri.getValue());          
-        }
-      } else if (Utilities.isAbsoluteUrlLinkable(uri.getValue()) && !(uri instanceof IdType)) {
-        x.ah(uri.getValue()).addText(uri.getValue());
-      } else {
-        x.addText(uri.getValue());
-      }
-    }
-  }
-  
-  protected void renderUri(XhtmlNode x, UriType uri, String path, String id, Resource src) {
-    if (isCanonical(path)) {
-      x.code().tx(uri.getValue());
-    } else {
-      String url = uri.getValue();
-      if (url == null) {
-        x.b().tx(uri.getValue());
-      } else if (uri.getValue().startsWith("mailto:")) {
-        x.ah(uri.getValue()).addText(uri.getValue().substring(7));
-      } else {
-        Resource target = context.getContext().fetchResource(Resource.class, uri.getValue(), src);
-        if (target != null && target.hasWebPath()) {
-          String title = target instanceof CanonicalResource ? ((CanonicalResource) target).present() : uri.getValue();
-          x.ah(target.getWebPath()).addText(title);
-        } else if (uri.getValue().contains("|")) {
-          x.ah(uri.getValue().substring(0, uri.getValue().indexOf("|"))).addText(uri.getValue());
-        } else if (url.startsWith("http:") || url.startsWith("https:") || url.startsWith("ftp:")) {
-          x.ah(uri.getValue()).addText(uri.getValue());        
-        } else {
-          x.code().addText(uri.getValue());        
-        }
-      }
-    }
-  }
-
-  protected void renderAnnotation(XhtmlNode x, Annotation annot) {
-    renderAnnotation(x, annot, false);
-  }
-
-  protected void renderAnnotation(XhtmlNode x, Annotation a, boolean showCodeDetails) throws FHIRException {
-    StringBuilder b = new StringBuilder();
-    if (a.hasText()) {
-      b.append(a.getText());
-    }
-
-    if (a.hasText() && (a.hasAuthor() || a.hasTimeElement())) {
-      b.append(" (");
-    }
-
-    if (a.hasAuthor()) {
-      b.append("By ");
-      if (a.hasAuthorReference()) {
-        b.append(a.getAuthorReference().getReference());
-      } else if (a.hasAuthorStringType()) {
-        b.append(a.getAuthorStringType().getValue());
-      }
-    }
-
-
-    if (a.hasTimeElement()) {
-      if (b.length() > 0) {
-        b.append(" ");
-      }
-      b.append("@").append(a.getTimeElement().toHumanDisplay());
-    }
-    if (a.hasText() && (a.hasAuthor() || a.hasTimeElement())) {
-      b.append(")");
-    }
-
-
-    x.addText(b.toString());
-  }
-
-  public String displayCoding(Coding c) {
-    String s = "";
-    if (context.isTechnicalMode()) {
-      s = c.getDisplay();
-      if (Utilities.noString(s)) {
-        s = lookupCode(c.getSystem(), c.getVersion(), c.getCode());        
-      }
-      if (Utilities.noString(s)) {
-        s = displayCodeTriple(c.getSystem(), c.getVersion(), c.getCode());
-      } else if (c.hasSystem()) {
-        s = s + " ("+displayCodeTriple(c.getSystem(), c.getVersion(), c.getCode())+")";
-      } else if (c.hasCode()) {
-        s = s + " ("+c.getCode()+")";
-      }
-    } else {
-    if (c.hasDisplayElement())
-      return c.getDisplay();
-    if (Utilities.noString(s))
-      s = lookupCode(c.getSystem(), c.getVersion(), c.getCode());
-    if (Utilities.noString(s))
-      s = c.getCode();
-    }
-    return s;
-  }
-
-  private String displayCodeSource(String system, String version) {
-    String s = displaySystem(system);
-    if (version != null) {
-      s = s + "["+describeVersion(version)+"]";
-    }
-    return s;    
-  }
-  
-  private String displayCodeTriple(String system, String version, String code) {
-    if (system == null) {
-      if (code == null) {
+    switch (type.fhirType()) {
+    case "Coding": return displayCoding(type); 
+    case "CodeableConcept": return displayCodeableConcept(type); 
+    case "CodeableReference": return displayCodeableReference(type); 
+    case "Identifier": return displayIdentifier(type); 
+    case "HumanName": return displayHumanName(type); 
+    case "Address": return displayAddress(type); 
+    case "ContactPoint": return displayContactPoint(type); 
+    case "Quantity": return displayQuantity(type); 
+    case "Range": return displayRange(type); 
+    case "Period": return displayPeriod(type); 
+    case "Timing": return displayTiming(type); 
+    case "SampledData": return displaySampledData(type); 
+    case "ContactDetail": return displayContactDetail(type); 
+    case "Annotation":  return displayAnnotation(type);
+    case "Ratio":  return displayRatio(type);
+    case "Reference" : return displayReference(type);
+    case "dateTime":
+    case "date" : 
+    case "instant" :
+      return displayDateTime(type);
+    default:
+      if (type.isPrimitive()) { 
+        return context.getTranslated(type); 
+      } else if (Utilities.existsInList(type.fhirType(),  "Meta", "Dosage", "Signature", "UsageContext", "RelatedArtifact", "ElementDefinition", "Base64BinaryType", "Attachment")) {
         return "";
       } else {
-        return "#"+code;
+        return (context.formatPhrase(RenderingContext.DATA_REND_NO_DISP, type.fhirType()) + " "); 
       }
+    }
+  } 
+
+  private String displayAnnotation(ResourceWrapper type) {
+    return type.primitiveValue("text");
+  }
+
+  private String displayCodeableReference(ResourceWrapper type) {
+    if (type.has("reference")) {
+      return displayReference(type.child("reference"));
     } else {
-      String s = displayCodeSource(system, version);
-      if (code != null) {
-        s = s + "#"+code;
-      }
-      return s;
+      return displayCodeableConcept(type.child("concept"));
     }
   }
 
-  public String displayCoding(List<Coding> list) {
-    CommaSeparatedStringBuilder b = new CommaSeparatedStringBuilder();
-    for (Coding c : list) {
-      b.append(displayCoding(c));
+
+  protected String displayReference(ResourceWrapper type) {
+    if (type.has("display")) {
+      return type.primitiveValue("display");
+    } else if (type.has("reference")) {
+      //      ResourceWithReference tr = resolveReference(res, r.getReference());
+      //      x.addText(tr == null ? r.getReference() : "?ngen-3"); // getDisplayForReference(tr.getReference()));
+      return "?ngen-3";
+    } else {
+      return "?ngen-4?";
     }
-    return b.toString();
   }
 
-  protected void renderCoding(XhtmlNode x, Coding c) {
-    renderCoding(x, c, false);
+  private String displayRatio(ResourceWrapper type) {
+    return displayQuantity(type.child("numerator"))+" / "+displayQuantity(type.child("denominator"));
   }
-  
-  protected void renderCoding(HierarchicalTableGenerator gen, List<Piece> pieces, Coding c) {
-    if (c.isEmpty()) {
-      return;
-    }
 
-    String url = getLinkForSystem(c.getSystem(), c.getVersion());
-    String name = displayCodeSource(c.getSystem(), c.getVersion());
-    if (!Utilities.noString(url)) {
-      pieces.add(gen.new Piece(url, name, c.getSystem()+(c.hasVersion() ? "#"+c.getVersion() : "")));
+  protected String displayDateTime(ResourceWrapper type) { 
+    if (!type.hasPrimitiveValue()) { 
+      return ""; 
+    } 
+
+    BaseDateTimeType t = new DateTimeType(type.primitiveValue());
+    // relevant inputs in rendering context: 
+    // timeZone, dateTimeFormat, locale, mode 
+    //   timezone - application specified timezone to use.  
+    //        null = default to the time of the date/time itself 
+    //   dateTimeFormat - application specified format for date times 
+    //        null = default to ... depends on mode 
+    //   mode - if rendering mode is technical, format defaults to XML format 
+    //   locale - otherwise, format defaults to SHORT for the Locale (which defaults to default Locale)   
+    if (isOnlyDate(t.getPrecision())) { 
+
+      DateTimeFormatter fmt = getDateFormatForPrecision(t);       
+      LocalDate date = LocalDate.of(t.getYear(), t.getMonth()+1, t.getDay()); 
+      return fmt.format(date); 
+    } 
+
+    DateTimeFormatter fmt = context.getDateTimeFormat(); 
+    if (fmt == null) { 
+      if (context.isTechnicalMode()) { 
+        fmt = DateTimeFormatter.ISO_OFFSET_DATE_TIME; 
+      } else { 
+        fmt = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT).withLocale(context.getLocale()); 
+      } 
+    } 
+    ZonedDateTime zdt = ZonedDateTime.parse(t.primitiveValue()); 
+    ZoneId zone = context.getTimeZoneId(); 
+    if (zone != null) { 
+      zdt = zdt.withZoneSameInstant(zone); 
+    } 
+    return fmt.format(zdt); 
+  } 
+
+  private DateTimeFormatter getDateFormatForPrecision(BaseDateTimeType type) { 
+    DateTimeFormatter fmt = getContextDateFormat(type); 
+    if (fmt != null) { 
+      return fmt; 
+    } 
+    if (context.isTechnicalMode()) { 
+      switch (type.getPrecision()) { 
+      case YEAR: 
+        return new DateTimeFormatterBuilder().appendValue(YEAR, 4, 10, SignStyle.EXCEEDS_PAD).toFormatter(); 
+      case MONTH: 
+        return  new DateTimeFormatterBuilder().appendValue(YEAR, 4, 10, SignStyle.EXCEEDS_PAD).appendLiteral('-').appendValue(MONTH_OF_YEAR, 2).toFormatter(); 
+      default: 
+        return DateTimeFormatter.ISO_DATE; 
+      } 
     } else { 
-      pieces.add(gen.new Piece(null, name, c.getSystem()+(c.hasVersion() ? "#"+c.getVersion() : "")));
-    }
-    pieces.add(gen.new Piece(null, "#"+c.getCode(), null));
-    String s = c.getDisplay();
-    if (Utilities.noString(s)) {
-      s = lookupCode(c.getSystem(), c.getVersion(), c.getCode());
-    }
-    if (!Utilities.noString(s)) {
-      pieces.add(gen.new Piece(null, " \""+s+"\"", null));
-    }
-  }
+      switch (type.getPrecision()) { 
+      case YEAR: 
+        return DateTimeFormatter.ofPattern("uuuu"); 
+      case MONTH: 
+        return DateTimeFormatter.ofPattern("MMM uuuu"); 
+      default: 
+        return DateTimeFormatter.ofLocalizedDate(FormatStyle.SHORT).withLocale(context.getLocale()); 
+      } 
+    } 
+  } 
+
+  private DateTimeFormatter getContextDateFormat(BaseDateTimeType type) { 
+    switch (type.getPrecision()) { 
+    case YEAR: 
+      return context.getDateYearFormat(); 
+    case MONTH: 
+      return context.getDateYearMonthFormat(); 
+    default: 
+      return context.getDateFormat(); 
+    } 
+  }    
+
+  private boolean isOnlyDate(TemporalPrecisionEnum temporalPrecisionEnum) { 
+    return temporalPrecisionEnum == TemporalPrecisionEnum.YEAR || temporalPrecisionEnum == TemporalPrecisionEnum.MONTH || temporalPrecisionEnum == TemporalPrecisionEnum.DAY; 
+  } 
+
+
+  //  public void renderDataType(RenderingStatus status, XhtmlNode x, ResourceWrapper type) throws FHIRFormatError, DefinitionException, IOException  { 
+  ////    Base base = null; 
+  ////    try { 
+  ////      base = type.getBase(); 
+  ////    } catch (FHIRException | IOException e) { 
+  ////      x.tx(context.formatPhrase(RenderingContext.DATA_REND_ERROR, e.getMessage()) + " "); // this shouldn't happen - it's an error in the library itself 
+  ////      return; 
+  ////    } 
+  ////    if (base instanceof DataType) { 
+  ////      render(x, (DataType) base); 
+  ////    } else { 
+  ////      x.tx(context.formatPhrase(RenderingContext.DATA_REND_TO_DO, base.fhirType())); 
+  ////    } 
+  //  } 
+
+  public void renderBase(RenderingStatus status, XhtmlNode x, Base b) throws FHIRFormatError, DefinitionException, IOException { 
+    if (b instanceof DataType) { 
+      renderDataType(status, x, wrapNC((DataType) b)); 
+    } else { 
+      x.tx(context.formatPhrase(RenderingContext.DATA_REND_NO_DISP, b.fhirType()) + " ");       
+    } 
+  } 
   
-  private String getLinkForSystem(String system, String version) {
-    if ("http://snomed.info/sct".equals(system)) {
-      return "https://browser.ihtsdotools.org/";      
-    } else if ("http://loinc.org".equals(system)) {
-      return "https://loinc.org/";            
-    } else if ("http://unitsofmeasure.org".equals(system)) {
-      return "http://ucum.org";            
-    } else {
-      String url = system;
-      if (version != null) {
-        url = url + "|"+version;
-      }
-      CodeSystem cs = context.getWorker().fetchCodeSystem(url);
-      if (cs != null && cs.hasWebPath()) {
-        return cs.getWebPath();
-      }
-      return null;
-    }
+  public boolean canRenderDataType(String type) {
+    return context.getContextUtilities().isPrimitiveType(type) ||  Utilities.existsInList(type, "Annotation", "Coding", "CodeableConcept",  "Identifier", "HumanName", "Address",
+          "Expression",  "Money", "ContactPoint",  "Quantity",  "Range",  "Period", "Timing", "SampledData",  "Reference", "UsageContext",  "ContactDetail",  "Ratio",  "Attachment",  "CodeableReference");
   }
-  
-  protected String getLinkForCode(String system, String version, String code) {
-    if ("http://snomed.info/sct".equals(system)) {
-      if (!Utilities.noString(code)) {
-        return "http://snomed.info/id/"+code;        
+
+  public boolean renderDataType(RenderingStatus status, XhtmlNode x, ResourceWrapper type) throws FHIRFormatError, DefinitionException, IOException {
+    return renderDataType(status, null, x, type);
+  }
+  public boolean renderDataType(RenderingStatus status, XhtmlNode parent, XhtmlNode x, ResourceWrapper type) throws FHIRFormatError, DefinitionException, IOException { 
+    switch (type.fhirType()) {
+    case "dateTime":
+    case "date" : 
+    case "instant" :
+      renderDateTime(status, x, type);
+      break;
+    case "uri" :
+    case "url" :
+      renderUri(status, x, type); 
+      break;
+    case "canonical" :
+      renderCanonical(status, x, type); 
+      break;
+    case "Annotation": 
+      renderAnnotation(status, x, type); 
+      break;
+    case "Coding": 
+      renderCodingWithDetails(status, x, type); 
+      break;
+    case "CodeableConcept": 
+      renderCodeableConcept(status, x, type); 
+      break;
+    case "Identifier": 
+      renderIdentifier(status, x, type); 
+      break;
+    case "HumanName": 
+      renderHumanName(status, x, type); 
+      break;
+    case "Address": 
+      renderAddress(status, x, type); 
+      break;
+    case "Expression": 
+      renderExpression(status, x, type); 
+      break;
+    case "Money": 
+      renderMoney(status, x, type); 
+      break;
+    case "ContactPoint": 
+      renderContactPoint(status, x, type); 
+      break;
+    case "Quantity": 
+      renderQuantity(status, x, type); 
+      break;
+    case "Range": 
+      renderRange(status, x, type); 
+      break;
+    case "Period": 
+      renderPeriod(status, x, type); 
+      break;
+    case "Timing": 
+      renderTiming(status, x, type); 
+      break;
+    case "SampledData": 
+      renderSampledData(status, x, type); 
+      break;
+    case "Reference": 
+      renderReference(status, x, type); 
+      break;
+    case "UsageContext": 
+      renderUsageContext(status, x, type); 
+      break;
+    case "ContactDetail": 
+      renderContactDetail(status, x, type); 
+      break;
+    case "Ratio": 
+      renderRatio(status, x, type); 
+      break;
+    case "Attachment": 
+      renderAttachment(status, x, type); 
+      break;
+    case "CodeableReference": 
+      if (type.has("concept")) { 
+        renderCodeableConcept(status, x, type.child("concept")); 
+      } else {  
+        renderReference(status, x, type.child("reference")); 
+      } 
+      break;
+    case "code": 
+      x.tx(getTranslatedCode(type)); 
+      break;
+    case "markdown": 
+      addMarkdown(parent == null ? x : parent, context.getTranslated(type)); // note parent not focus, because of paragraph issues and markdown 
+      break;
+    case "base64Binary":
+      int length = type.primitiveValue().length();
+      if (length >= context.getBase64Limit()) {
+        x.tx(context.formatPhrase(RenderingContext.DATA_REND_BASE64, length));
       } else {
-        return "https://browser.ihtsdotools.org/";
+        x.code(type.primitiveValue());
+        
       }
-    } else if ("http://loinc.org".equals(system)) {
-      if (!Utilities.noString(code)) {
-        return "https://loinc.org/"+code;
-      } else {
-        return "https://loinc.org/";
-      }
-    } else if ("http://www.nlm.nih.gov/research/umls/rxnorm".equals(system)) {
-      if (!Utilities.noString(code)) {
-        return "https://mor.nlm.nih.gov/RxNav/search?searchBy=RXCUI&searchTerm="+code;        
-      } else {
-        return "https://www.nlm.nih.gov/research/umls/rxnorm/index.html";
-      }
-    } else if ("urn:iso:std:iso:3166".equals(system)) {
-      if (!Utilities.noString(code)) {
-        return "https://en.wikipedia.org/wiki/ISO_3166-2:"+code;        
-      } else {
-        return "https://en.wikipedia.org/wiki/ISO_3166-2";
-      }
-    } else {
-      CodeSystem cs = context.getWorker().fetchCodeSystem(system, version);
-      if (cs != null && cs.hasWebPath()) {
-        if (!Utilities.noString(code)) {
-          return cs.getWebPath()+"#"+cs.getId()+"-"+Utilities.nmtokenize(code);
-        } else {
-          return cs.getWebPath();
-        }
-      }
-    }  
-    return null;
-  }
-  
-  public CodeResolution resolveCode(String system, String code) {
-    return resolveCode(new Coding().setSystem(system).setCode(code));
-  }
-
-  public CodeResolution resolveCode(Coding c) {
-    String systemName;
-    String systemLink;
-    String link;
-    String display = null;
-    String hint;
-    
-    if (c.hasDisplayElement())
-      display = c.getDisplay();
-    if (Utilities.noString(display))
-      display = lookupCode(c.getSystem(), c.getVersion(), c.getCode());
-    if (Utilities.noString(display)) {
-      display = c.getCode();
-    }
-    
-    CodeSystem cs = context.getWorker().fetchCodeSystem(c.getSystem());
-    systemLink = cs != null ? cs.getWebPath() : null;
-    systemName = cs != null ? cs.present() : describeSystem(c.getSystem());
-    link = getLinkForCode(c.getSystem(), c.getVersion(), c.getCode());
-
-    hint = systemName+": "+display+(c.hasVersion() ? " (version = "+c.getVersion()+")" : "");
-    return new CodeResolution(systemName, systemLink, link, display, hint);
-  }
-  
-  public CodeResolution resolveCode(CodeableConcept code) {
-    if (code.hasCoding()) {
-      return resolveCode(code.getCodingFirstRep());
-    } else {
-      return new CodeResolution(null, null, null, code.getText(), code.getText());
-    }
-  }
-  protected void renderCodingWithDetails(XhtmlNode x, Coding c) {
-    String s = "";
-    if (c.hasDisplayElement())
-      s = c.getDisplay();
-    if (Utilities.noString(s))
-      s = lookupCode(c.getSystem(), c.getVersion(), c.getCode());
-
-    CodeSystem cs = context.getWorker().fetchCodeSystem(c.getSystem());
-
-    String sn = cs != null ? cs.present() : describeSystem(c.getSystem());
-    String link = getLinkForCode(c.getSystem(), c.getVersion(), c.getCode());
-    if (link != null) {
-      x.ah(link).tx(sn);
-    } else {
-      x.tx(sn);
-    }
-    
-    x.tx(" ");
-    x.tx(c.getCode());
-    if (!Utilities.noString(s)) {
-      x.tx(": ");
-      x.tx(s);
-    }
-    if (c.hasVersion()) {
-      x.tx(" (version = "+c.getVersion()+")");
-    }
-  }
-  
-  protected void renderCoding(XhtmlNode x, Coding c, boolean showCodeDetails) {
-    String s = "";
-    if (c.hasDisplayElement())
-      s = c.getDisplay();
-    if (Utilities.noString(s))
-      s = lookupCode(c.getSystem(), c.getVersion(), c.getCode());
-
-    if (Utilities.noString(s))
-      s = c.getCode();
-
-    if (showCodeDetails) {
-      x.addText(s+" (Details: "+TerminologyRenderer.describeSystem(c.getSystem())+" code "+c.getCode()+" = '"+lookupCode(c.getSystem(), c.getVersion(), c.getCode())+"', stated as '"+c.getDisplay()+"')");
-    } else
-      x.span(null, "{"+c.getSystem()+" "+c.getCode()+"}").addText(s);
-  }
-
-  public String displayCodeableConcept(CodeableConcept cc) {
-    String s = cc.getText();
-    if (Utilities.noString(s)) {
-      for (Coding c : cc.getCoding()) {
-        if (c.hasDisplayElement()) {
-          s = c.getDisplay();
-          break;
-        }
-      }
-    }
-    if (Utilities.noString(s)) {
-      // still? ok, let's try looking it up
-      for (Coding c : cc.getCoding()) {
-        if (c.hasCode() && c.hasSystem()) {
-          s = lookupCode(c.getSystem(), c.getVersion(), c.getCode());
-          if (!Utilities.noString(s))
-            break;
-        }
-      }
-    }
-
-    if (Utilities.noString(s)) {
-      if (cc.getCoding().isEmpty())
-        s = "";
-      else
-        s = cc.getCoding().get(0).getCode();
-    }
-    return s;
-  }
-
-  protected void renderCodeableConcept(XhtmlNode x, CodeableConcept cc) throws FHIRFormatError, DefinitionException, IOException {
-    renderCodeableConcept(x, cc, false);
-  }
-  
-  protected void renderCodeableReference(XhtmlNode x, CodeableReference e, boolean showCodeDetails) throws FHIRFormatError, DefinitionException, IOException {
-    if (e.hasConcept()) {
-      renderCodeableConcept(x, e.getConcept(), showCodeDetails);
-    }
-    if (e.hasReference()) {
-      renderReference(x, e.getReference());
-    }
-  }
-
-  protected void renderCodeableConcept(XhtmlNode x, CodeableConcept cc, boolean showCodeDetails) throws FHIRFormatError, DefinitionException, IOException {
-    if (cc.isEmpty()) {
-      return;
-    }
-
-    String s = cc.getText();
-    if (Utilities.noString(s)) {
-      for (Coding c : cc.getCoding()) {
-        if (c.hasDisplayElement()) {
-          s = c.getDisplay();
-          break;
-        }
-      }
-    }
-    if (Utilities.noString(s)) {
-      // still? ok, let's try looking it up
-      for (Coding c : cc.getCoding()) {
-        if (c.hasCodeElement() && c.hasSystemElement()) {
-          s = lookupCode(c.getSystem(), c.getVersion(), c.getCode());
-          if (!Utilities.noString(s))
-            break;
-        }
-      }
-    }
-
-    if (Utilities.noString(s)) {
-      if (cc.getCoding().isEmpty())
-        s = "";
-      else
-        s = cc.getCoding().get(0).getCode();
-    }
-
-    if (showCodeDetails) {
-      x.addText(s+" ");
-      XhtmlNode sp = x.span("background: LightGoldenRodYellow; margin: 4px; border: 1px solid khaki", null);
-      sp.tx(" (");
-      boolean first = true;
-      for (Coding c : cc.getCoding()) {
-        if (first) {
-          first = false;
-        } else {
-          sp.tx("; ");
-        }
-        String url = getLinkForSystem(c.getSystem(), c.getVersion());
-        if (url != null) {
-          sp.ah(url).tx(displayCodeSource(c.getSystem(), c.getVersion()));
-        } else {
-          sp.tx(displayCodeSource(c.getSystem(), c.getVersion()));
-        }
-        if (c.hasCode()) {
-          sp.tx("#"+c.getCode());
-        }
-        if (c.hasDisplay() && !s.equals(c.getDisplay())) {
-          sp.tx(" \""+c.getDisplay()+"\"");
-        }
-      }
-      if (hasRenderableExtensions(cc)) {
-        if (!first) {
-          sp.tx("; ");
-        }
-        renderExtensionsInText(sp, cc, ";");
-      }
-      sp.tx(")");
-    } else {
-
-      CommaSeparatedStringBuilder b = new CommaSeparatedStringBuilder();
-      for (Coding c : cc.getCoding()) {
-        if (c.hasCodeElement() && c.hasSystemElement()) {
-          b.append("{"+c.getSystem()+" "+c.getCode()+"}");
-        }
-      }
-
-      x.span(null, "Codes: "+b.toString()).addText(s);
-    }
-  }
-
-  private String displayIdentifier(Identifier ii) {
-    String s = Utilities.noString(ii.getValue()) ? "?ngen-9?" : ii.getValue();
-
-    if (ii.hasType()) {
-      if (ii.getType().hasText())
-        s = ii.getType().getText()+":\u00A0"+s;
-      else if (ii.getType().hasCoding() && ii.getType().getCoding().get(0).hasDisplay())
-        s = ii.getType().getCoding().get(0).getDisplay()+": "+s;
-      else if (ii.getType().hasCoding() && ii.getType().getCoding().get(0).hasCode())
-        s = lookupCode(ii.getType().getCoding().get(0).getSystem(), ii.getType().getCoding().get(0).getVersion(), ii.getType().getCoding().get(0).getCode())+": "+s;
-    } else {
-      s = "id:\u00A0"+s;      
-    }
-
-    if (ii.hasUse() || ii.hasPeriod()) {
-      s = s + "\u00A0(";
-      if (ii.hasUse()) {
-        s = s + "use:\u00A0"+ii.getUse().toString();
-      }
-      if (ii.hasUse() && ii.hasPeriod()) {
-        s = s + ",\u00A0";
-      }
-      if (ii.hasPeriod()) {
-        s = s + "period:\u00A0"+displayPeriod(ii.getPeriod());
-      }
-      s = s + ")";
-    }    
-    return s;
-  }
-  
-  protected void renderIdentifier(XhtmlNode x, Identifier ii) {
-    x.addText(displayIdentifier(ii));
-  }
-
-  public static String displayHumanName(HumanName name) {
-    StringBuilder s = new StringBuilder();
-    if (name.hasText())
-      s.append(name.getText());
-    else {
-      for (StringType p : name.getGiven()) {
-        s.append(p.getValue());
-        s.append(" ");
-      }
-      if (name.hasFamily()) {
-        s.append(name.getFamily());
-        s.append(" ");
-      }
-    }
-    if (name.hasUse() && name.getUse() != NameUse.USUAL)
-      s.append("("+name.getUse().toString()+")");
-    return s.toString();
-  }
-
-
-  protected void renderHumanName(XhtmlNode x, HumanName name) {
-    x.addText(displayHumanName(name));
-  }
-
-  private String displayAddress(Address address) {
-    StringBuilder s = new StringBuilder();
-    if (address.hasText())
-      s.append(address.getText());
-    else {
-      for (StringType p : address.getLine()) {
-        s.append(p.getValue());
-        s.append(" ");
-      }
-      if (address.hasCity()) {
-        s.append(address.getCity());
-        s.append(" ");
-      }
-      if (address.hasState()) {
-        s.append(address.getState());
-        s.append(" ");
-      }
-
-      if (address.hasPostalCode()) {
-        s.append(address.getPostalCode());
-        s.append(" ");
-      }
-
-      if (address.hasCountry()) {
-        s.append(address.getCountry());
-        s.append(" ");
-      }
-    }
-    if (address.hasUse())
-      s.append("("+address.getUse().toString()+")");
-    return s.toString();
-  }
-  
-  protected void renderAddress(XhtmlNode x, Address address) {
-    x.addText(displayAddress(address));
-  }
-
-
-  public static String displayContactPoint(ContactPoint contact) {
-    StringBuilder s = new StringBuilder();
-    s.append(describeSystem(contact.getSystem()));
-    if (Utilities.noString(contact.getValue()))
-      s.append("-unknown-");
-    else
-      s.append(contact.getValue());
-    if (contact.hasUse())
-      s.append("("+contact.getUse().toString()+")");
-    return s.toString();
-  }
-
-  protected String getLocalizedBigDecimalValue(BigDecimal input, Currency c) {
-    NumberFormat numberFormat = NumberFormat.getNumberInstance(context.getLocale());
-    numberFormat.setGroupingUsed(true);
-    numberFormat.setMaximumFractionDigits(c.getDefaultFractionDigits());
-    numberFormat.setMinimumFractionDigits(c.getDefaultFractionDigits());
-    return numberFormat.format(input);
-}
-  
-  protected void renderMoney(XhtmlNode x, Money money) {
-    if (x.getName().equals("blockquote")) {
-      x = x.para();
-    }
-    Currency c = Currency.getInstance(money.getCurrency());
-    if (c != null) {
-      XhtmlNode s = x.span(null, c.getDisplayName());
-      s.tx(c.getSymbol(context.getLocale()));
-      s.tx(getLocalizedBigDecimalValue(money.getValue(), c));
-      x.tx(" ("+c.getCurrencyCode()+")");
-    } else {
-      x.tx(money.getCurrency());
-      x.tx(money.getValue().toPlainString());
-    }
-  }
-  
-  protected void renderExpression(XhtmlNode x, Expression expr) {
-  // there's two parts: what the expression is, and how it's described. 
-    // we start with what it is, and then how it's described 
-    XhtmlNode p = x;
-    if (p.getName().equals("blockquote")) {
-      p = p.para();
-    }
-    if (expr.hasExpression()) {
-      if (expr.hasReference()) {
-        p = x.ah(expr.getReference());        
-      }
-      XhtmlNode c = p;
-      if (expr.hasLanguage()) {
-        c = c.span(null, expr.getLanguage());
-      }
-      c.code().tx(expr.getExpression());
-    } else if (expr.hasReference()) {
-      p.ah(expr.getReference()).tx("source");
-    }
-    if (expr.hasName() || expr.hasDescription()) {
-      p.tx("(");
-      if (expr.hasName()) {
-        p.b().tx(expr.getName());
-      }
-      if (expr.hasDescription()) {
-        p.tx("\"");
-        p.tx(expr.getDescription());
-        p.tx("\"");
-      }
-      p.tx(")");
-    }
-  }
-  
-  
-  protected void renderContactPoint(XhtmlNode x, ContactPoint contact) {
-    if (contact != null) {
-      if (!contact.hasSystem()) {
-        x.addText(displayContactPoint(contact));        
-      } else {
-        switch (contact.getSystem()) {
-        case EMAIL:
-          x.ah("mailto:"+contact.getValue()).tx(contact.getValue());
-          break;
-        case FAX:
-          x.addText(displayContactPoint(contact));
-          break;
-        case NULL:
-          x.addText(displayContactPoint(contact));
-          break;
-        case OTHER:
-          x.addText(displayContactPoint(contact));
-          break;
-        case PAGER:
-          x.addText(displayContactPoint(contact));
-          break;
-        case PHONE:
-          if (contact.hasValue() && contact.getValue().startsWith("+")) {
-            x.ah("tel:"+contact.getValue().replace(" ", "")).tx(contact.getValue());
-          } else {
-            x.addText(displayContactPoint(contact));
-          }
-          break;
-        case SMS:
-          x.addText(displayContactPoint(contact));
-          break;
-        case URL:
-          x.ah(contact.getValue()).tx(contact.getValue());
-          break;
-        default:
-          break;      
-        }
-      }
-    }
-  }
-
-  protected void displayContactPoint(XhtmlNode p, ContactPoint c) {
-    if (c != null) {
-      if (c.getSystem() == ContactPointSystem.PHONE) {
-        p.tx("Phone: "+c.getValue());
-      } else if (c.getSystem() == ContactPointSystem.FAX) {
-        p.tx("Fax: "+c.getValue());
-      } else if (c.getSystem() == ContactPointSystem.EMAIL) {
-        p.tx(c.getValue());
-      } else if (c.getSystem() == ContactPointSystem.URL) {
-        if (c.getValue().length() > 30) {
-          p.addText(c.getValue().substring(0, 30)+"...");
-        } else {
-          p.addText(c.getValue());
-        }
-      }
-    }
-  }
-
-  protected void addTelecom(XhtmlNode p, ContactPoint c) {
-    if (c.getSystem() == ContactPointSystem.PHONE) {
-      p.tx("Phone: "+c.getValue());
-    } else if (c.getSystem() == ContactPointSystem.FAX) {
-      p.tx("Fax: "+c.getValue());
-    } else if (c.getSystem() == ContactPointSystem.EMAIL) {
-      p.ah( "mailto:"+c.getValue()).addText(c.getValue());
-    } else if (c.getSystem() == ContactPointSystem.URL) {
-      if (c.getValue().length() > 30)
-        p.ah(c.getValue()).addText(c.getValue().substring(0, 30)+"...");
-      else
-        p.ah(c.getValue()).addText(c.getValue());
-    }
-  }
-  private static String describeSystem(ContactPointSystem system) {
-    if (system == null)
-      return "";
-    switch (system) {
-    case PHONE: return "ph: ";
-    case FAX: return "fax: ";
+      break;
     default:
-      return "";
-    }
-  }
-
-  protected String displayQuantity(Quantity q) {
-    StringBuilder s = new StringBuilder();
-
-    s.append(q.hasValue() ? q.getValue() : "?");
-    if (q.hasUnit())
-      s.append(" ").append(q.getUnit());
-    else if (q.hasCode())
-      s.append(" ").append(q.getCode());
-
-    return s.toString();
-  }  
-  
-  protected void renderQuantity(XhtmlNode x, Quantity q) {
-    renderQuantity(x, q, false);
-  }
-  
-  protected void renderQuantity(XhtmlNode x, Quantity q, boolean showCodeDetails) {
-    if (q.hasComparator())
-      x.addText(q.getComparator().toCode());
-    if (q.hasValue()) {
-      x.addText(q.getValue().toString());
-    }
-    if (q.hasUnit())
-      x.tx(" "+q.getUnit());
-    else if (q.hasCode() && q.hasSystem()) {
-      // if there's a code there *shall* be a system, so if we've got one and not the other, things are invalid and we won't bother trying to render
-      if (q.hasSystem() && q.getSystem().equals("http://unitsofmeasure.org"))
-        x.tx(" "+q.getCode());
-      else
-        x.tx("(unit "+q.getCode()+" from "+q.getSystem()+")");
-    }
-    if (showCodeDetails && q.hasCode()) {
-      x.span("background: LightGoldenRodYellow", null).tx(" (Details: "+TerminologyRenderer.describeSystem(q.getSystem())+" code "+q.getCode()+" = '"+lookupCode(q.getSystem(), null, q.getCode())+"')");
-    }
-  }
-
-  public String displayRange(Range q) {
-    if (!q.hasLow() && !q.hasHigh())
-      return "?";
-
-    StringBuilder b = new StringBuilder();
-
-    boolean sameUnits = (q.getLow().hasUnit() && q.getHigh().hasUnit() && q.getLow().getUnit().equals(q.getHigh().getUnit())) 
-        || (q.getLow().hasCode() && q.getHigh().hasCode() && q.getLow().getCode().equals(q.getHigh().getCode()));
-    String low = "?";
-    if (q.hasLow() && q.getLow().hasValue())
-      low = sameUnits ? q.getLow().getValue().toString() : displayQuantity(q.getLow());
-    String high = displayQuantity(q.getHigh());
-    if (high.isEmpty())
-      high = "?";
-    b.append(low).append("\u00A0to\u00A0").append(high);
-    return b.toString();
-  }
-
-  protected void renderRange(XhtmlNode x, Range q) {
-    if (q.hasLow())
-      x.addText(q.getLow().getValue().toString());
-    else
-      x.tx("?");
-    x.tx("-");
-    if (q.hasHigh())
-      x.addText(q.getHigh().getValue().toString());
-    else
-      x.tx("?");
-    if (q.getLow().hasUnit())
-      x.tx(" "+q.getLow().getUnit());
-  }
-
-  public String displayPeriod(Period p) {
-    String s = !p.hasStart() ? "(?)" : displayDateTime(p.getStartElement());
-    s = s + " --> ";
-    return s + (!p.hasEnd() ? "(ongoing)" : displayDateTime(p.getEndElement()));
-  }
-
-  public void renderPeriod(XhtmlNode x, Period p) {
-    x.addText(!p.hasStart() ? "??" : displayDateTime(p.getStartElement()));
-    x.tx(" --> ");
-    x.addText(!p.hasEnd() ? "(ongoing)" : displayDateTime(p.getEndElement()));
-  }
-  
-  public void renderUsageContext(XhtmlNode x, UsageContext u) throws FHIRFormatError, DefinitionException, IOException {
-    renderCoding(x,  u.getCode());
-    x.tx(": ");
-    render(x, u.getValue());    
-  }
-  
-  public void renderDataRequirement(XhtmlNode x, DataRequirement dr) throws FHIRFormatError, DefinitionException, IOException {
-    XhtmlNode tbl = x.table("grid");
-    XhtmlNode tr = tbl.tr();    
-    XhtmlNode td = tr.td().colspan("2");
-    td.b().tx("Type");
-    td.tx(": ");
-    StructureDefinition sd = context.getWorker().fetchTypeDefinition(dr.getType().toCode());
-    if (sd != null && sd.hasWebPath()) {
-      td.ah(sd.getWebPath()).tx(dr.getType().toCode());
-    } else {
-      td.tx(dr.getType().toCode());
-    }
-    if (dr.hasProfile()) {
-      td.tx(" (");
-      boolean first = true;
-      for (CanonicalType p : dr.getProfile()) {
-        if (first) first = false; else td.tx(" | ");
-        sd = context.getWorker().fetchResource(StructureDefinition.class, p.getValue());
-        if (sd != null && sd.hasWebPath()) {
-          td.ah(sd.getWebPath()).tx(sd.present());
-        } else {
-            td.tx(p.asStringValue());
+      if (type.isPrimitive()) { 
+        if (!renderPrimitiveWithNoValue(status, x, type)) {
+          x.tx(context.getTranslated(type));
         }
+      } else { 
+        x.tx(context.formatPhrase(RenderingContext.DATA_REND_NO_DISP, type.fhirType()) + " "); 
+        return false;
       }
-      td.tx(")");
-    }
-    if (dr.hasSubject()) {
-      tr = tbl.tr();    
-      td = tr.td().colspan("2");
-      td.b().tx("Subject");
-      if (dr.hasSubjectReference()) {
-        renderReference(td,  dr.getSubjectReference());
-      } else {
-        renderCodeableConcept(td, dr.getSubjectCodeableConcept());
-      }
-    }
-    if (dr.hasCodeFilter() || dr.hasDateFilter()) {
-      tr = tbl.tr().backgroundColor("#efefef");    
-      tr.td().tx("Filter");
-      tr.td().tx("Value");
-    }
-    for (DataRequirementCodeFilterComponent cf : dr.getCodeFilter()) {
-      tr = tbl.tr();    
-      if (cf.hasPath()) {
-        tr.td().tx(cf.getPath());
-      } else {
-        tr.td().tx("Search on " +cf.getSearchParam());
-      }
-      if (cf.hasValueSet()) {
-        td = tr.td();
-        td.tx("In ValueSet ");
-        render(td, cf.getValueSetElement());
-      } else {
-        boolean first = true;
-        td = tr.td();
-        td.tx("One of these codes: ");
-        for (Coding c : cf.getCode()) {
-          if (first) first = false; else td.tx(", ");
-          render(td, c);
-        }
-      }
-    }
-    for (DataRequirementDateFilterComponent cf : dr.getDateFilter()) {
-      tr = tbl.tr();    
-      if (cf.hasPath()) {
-        tr.td().tx(cf.getPath());
-      } else {
-        tr.td().tx("Search on " +cf.getSearchParam());
-      }
-      render(tr.td(), cf.getValue());
-    }
-    if (dr.hasSort() || dr.hasLimit()) {
-      tr = tbl.tr();    
-      td = tr.td().colspan("2");
-      if (dr.hasLimit()) {
-        td.b().tx("Limit");
-        td.tx(": ");
-        td.tx(dr.getLimit());
-        if (dr.hasSort()) {
-          td.tx(", ");
-        }
-      }
-      if (dr.hasSort()) {
-        td.b().tx("Sort");
-        td.tx(": ");
-        boolean first = true;
-        for (DataRequirementSortComponent p : dr.getSort()) {
-          if (first) first = false; else td.tx(" | ");
-          td.tx(p.getDirection() == SortDirection.ASCENDING ? "+" : "-");
-          td.tx(p.getPath());
-        }
-      }
-    }
-  }
-  
-  
-  private String displayTiming(Timing s) throws FHIRException {
-    CommaSeparatedStringBuilder b = new CommaSeparatedStringBuilder();
-    if (s.hasCode())
-      b.append("Code: "+displayCodeableConcept(s.getCode()));
+    } 
+    return true;
+  } 
 
-    if (s.getEvent().size() > 0) {
-      CommaSeparatedStringBuilder c = new CommaSeparatedStringBuilder();
-      for (DateTimeType p : s.getEvent()) {
-        if (p.hasValue()) {
-          c.append(displayDateTime(p));
-        } else if (!renderExpression(c, p)) {
-          c.append("??");
-        }        
-      }
-      b.append("Events: "+ c.toString());
-    }
-
-    if (s.hasRepeat()) {
-      TimingRepeatComponent rep = s.getRepeat();
-      if (rep.hasBoundsPeriod() && rep.getBoundsPeriod().hasStart())
-        b.append("Starting "+displayDateTime(rep.getBoundsPeriod().getStartElement()));
-      if (rep.hasCount())
-        b.append("Count "+Integer.toString(rep.getCount())+" times");
-      if (rep.hasDuration())
-        b.append("Duration "+rep.getDuration().toPlainString()+displayTimeUnits(rep.getPeriodUnit()));
-
-      if (rep.hasWhen()) {
-        String st = "";
-        if (rep.hasOffset()) {
-          st = Integer.toString(rep.getOffset())+"min ";
-        }
-        b.append(st);
-        for (Enumeration<EventTiming> wh : rep.getWhen())
-          b.append(displayEventCode(wh.getValue()));
-      } else {
-        String st = "";
-        if (!rep.hasFrequency() || (!rep.hasFrequencyMax() && rep.getFrequency() == 1) )
-          st = "Once";
-        else {
-          st = Integer.toString(rep.getFrequency());
-          if (rep.hasFrequencyMax())
-            st = st + "-"+Integer.toString(rep.getFrequency());
-        }
-        if (rep.hasPeriod()) {
-          st = st + " per "+rep.getPeriod().toPlainString();
-          if (rep.hasPeriodMax())
-            st = st + "-"+rep.getPeriodMax().toPlainString();
-          st = st + " "+displayTimeUnits(rep.getPeriodUnit());
-        }
-        b.append(st);
-      }
-      if (rep.hasBoundsPeriod() && rep.getBoundsPeriod().hasEnd())
-        b.append("Until "+displayDateTime(rep.getBoundsPeriod().getEndElement()));
-    }
-    return b.toString();
+  // overide in ResourceRenderer
+  protected void renderCanonical(RenderingStatus status, XhtmlNode x, ResourceWrapper type) throws FHIRFormatError, DefinitionException, IOException {
+    renderUri(status, x, type);
   }
 
-  private boolean renderExpression(CommaSeparatedStringBuilder c, PrimitiveType p) {
-    Extension exp = p.getExtensionByUrl("http://hl7.org/fhir/StructureDefinition/cqf-expression");
-    if (exp == null) {
+  private void renderRatio(RenderingStatus status, XhtmlNode x, ResourceWrapper type) {
+    renderQuantity(status, x, type.child("numerator"));
+    x.tx("/");
+    renderQuantity(status, x, type.child("denominator"));
+  }
+
+  private void renderAttachment(RenderingStatus status, XhtmlNode x, ResourceWrapper att) {
+    String ct = att.primitiveValue("contentType");
+    if (att.has("url")) {
+      x.tx(context.formatMessage(RenderingContext.DATA_REND_ATT_URL, ct, att.primitiveValue("url")));
+    } else if (att.has("data")) {
+      x.tx(context.formatMessage(RenderingContext.DATA_REND_ATT_DATA, ct, displayDataType(att.child("data"))));      
+    }    
+  }
+
+  private void renderContactDetail(RenderingStatus status, XhtmlNode x, ResourceWrapper cd) {
+    if (cd.has("name")) {
+      x.tx(cd.primitiveValue("name")+": ");
+    }
+    boolean first = true;
+    for (ResourceWrapper c : cd.children("telecom")) {
+      if (first) first = false; else x.tx(",");
+      renderContactPoint(status, x, c);
+    }
+  }
+
+  private void renderDateTime(RenderingStatus status, XhtmlNode x, ResourceWrapper type) throws FHIRFormatError, DefinitionException, IOException {
+    if (!renderPrimitiveWithNoValue(status, x, type)) {
+      x.tx(displayDateTime(type));
+    }
+  }
+
+  /** 
+   * this is overriden in ResourceRenderer where a better rendering is performed
+   * @param status
+   * @param x
+   * @param ref
+   * @throws IOException 
+   * @throws DefinitionException 
+   * @throws FHIRFormatError 
+   */
+  protected void renderReference(RenderingStatus status, XhtmlNode x, ResourceWrapper ref) throws FHIRFormatError, DefinitionException, IOException { 
+    if (ref.has("display")) { 
+      x.tx(context.getTranslated(ref.child("display"))); 
+    } else if (ref.has("reference")) { 
+      x.tx(ref.primitiveValue("reference")); 
+    } else { 
+      x.tx("??"); 
+    } 
+  } 
+  // 
+  //  public void renderDateTime(RenderingStatus status, XhtmlNode x, Base e) { 
+  //    if (e.hasPrimitiveValue()) { 
+  //      x.addText(displayDateTime((DateTimeType) e)); 
+  //    } 
+  //  } 
+  // 
+  //  public void renderDate(RenderingStatus status, XhtmlNode x, Base e) { 
+  //    if (e.hasPrimitiveValue()) { 
+  //      x.addText(displayDateTime((DateType) e)); 
+  //    } 
+  //  } 
+  // 
+  //  public void renderDateTime(XhtmlNode x, String s) { 
+  //    if (s != null) { 
+  //      DateTimeType dt = new DateTimeType(s); 
+  //      x.addText(displayDateTime(dt)); 
+  //    } 
+  //  } 
+
+
+  protected boolean renderPrimitiveWithNoValue(RenderingStatus status, XhtmlNode x, PrimitiveType<?> prim) throws FHIRFormatError, DefinitionException, IOException {
+    if (prim.hasPrimitiveValue()) {
       return false;
     }
-    c.append(exp.getValueExpression().getExpression());
+    boolean first = true;
+    for (Extension ext : prim.getExtension()) {
+      if (first) first = false; else x.tx(", ");
+      String url = ext.getUrl();
+      if (url.equals(ToolingExtensions.EXT_DAR)) {
+        x.tx("Absent because : ");
+        displayCode(x, wrapNC(ext.getValue()));
+      } else if (url.equals(ToolingExtensions.EXT_NF)) {
+        x.tx("Null because: ");
+        displayCode(x, wrapNC(ext.getValue()));
+      } else if (url.equals(ToolingExtensions.EXT_OT)) {
+        x.code().tx("Text: ");
+        displayCode(x, wrapNC(ext.getValue()));
+      } else if (url.equals(ToolingExtensions.EXT_CQF_EXP)) {
+        x.code().tx("Value calculated by: ");
+        renderExpression(status, x, wrapNC(ext.getValue()));
+      } else {
+        StructureDefinition def = context.getContext().fetchResource(StructureDefinition.class, url);
+        if (def == null) {
+          x.code().tx(tail(url)+": ");
+        } else {
+          x.code().tx(def.present()+": ");
+        }
+        renderDataType(status, x, wrapNC(ext.getValue()));
+      }
+    }
+    status.setExtensions(true);
     return true;
   }
 
-  private String displayEventCode(EventTiming when) {
-    switch (when) {
-    case C: return "at meals";
-    case CD: return "at lunch";
-    case CM: return "at breakfast";
-    case CV: return "at dinner";
-    case AC: return "before meals";
-    case ACD: return "before lunch";
-    case ACM: return "before breakfast";
-    case ACV: return "before dinner";
-    case HS: return "before sleeping";
-    case PC: return "after meals";
-    case PCD: return "after lunch";
-    case PCM: return "after breakfast";
-    case PCV: return "after dinner";
-    case WAKE: return "after waking";
-    default: return "?ngen-6?";
+  protected boolean renderPrimitiveWithNoValue(RenderingStatus status, XhtmlNode x, ResourceWrapper prim) throws FHIRFormatError, DefinitionException, IOException {
+    if (prim.hasPrimitiveValue()) {
+      return false;
     }
+    boolean first = true;
+    for (ResourceWrapper ext : prim.extensions()) {
+      if (first) first = false; else x.tx(", ");
+      String url = ext.primitiveValue("url");
+      if (url.equals(ToolingExtensions.EXT_DAR)) {
+        x.tx("Absent because : ");
+        displayCode(x, ext.child("value"));
+      } else if (url.equals(ToolingExtensions.EXT_NF)) {
+        x.tx("Null because: ");
+        displayCode(x, ext.child("value"));
+      } else if (url.equals(ToolingExtensions.EXT_OT)) {
+        x.code().tx("Text: ");
+        displayCode(x, ext.child("value"));
+      } else if (url.equals(ToolingExtensions.EXT_CQF_EXP)) {
+        x.code().tx("Value calculated by: ");
+        renderExpression(status, x, ext.child("value"));
+      } else {
+        StructureDefinition def = context.getContext().fetchResource(StructureDefinition.class, url);
+        if (def == null) {
+          x.code().tx(tail(url)+": ");
+        } else {
+          x.code().tx(def.present()+": ");
+        }
+        renderDataType(status, x, ext.child("value"));
+      }
+    }
+    status.setExtensions(true);
+    return true;
   }
 
-  private String displayTimeUnits(UnitsOfTime units) {
-    if (units == null)
-      return "?ngen-7?";
-    switch (units) {
-    case A: return "years";
-    case D: return "days";
-    case H: return "hours";
-    case MIN: return "minutes";
-    case MO: return "months";
-    case S: return "seconds";
-    case WK: return "weeks";
-    default: return "?ngen-8?";
-    }
+  private String tail(String url) {
+    return url.contains("/") ? url.substring(url.lastIndexOf("/")+1) : url;
   }
+
+  private void displayCode(XhtmlNode x, ResourceWrapper code) {
+    x.tx(code.primitiveValue());
+  }
+
+  protected void renderUri(RenderingStatus status, XhtmlNode x, ResourceWrapper uri) throws FHIRFormatError, DefinitionException, IOException { 
+    if (!renderPrimitiveWithNoValue(status, x, uri)) {
+      String v = uri.primitiveValue();
+
+      if (context.getContextUtilities().isResource(v)) {
+        v = "http://hl7.org/fhir/"+v;
+      }
+      if (v.startsWith("mailto:")) { 
+        x.ah(v).addText(v.substring(7)); 
+      } else { 
+        Resource r = context.getContext().fetchResource(Resource.class, v); 
+        if (r != null && r.getWebPath() != null) { 
+          if (r instanceof CanonicalResource) { 
+            x.ah(context.prefixLocalHref(r.getWebPath())).addText(crPresent((CanonicalResource) r));           
+          } else { 
+            x.ah(context.prefixLocalHref(r.getWebPath())).addText(v);           
+          } 
+        } else { 
+          String url = context.getResolver() != null ? context.getResolver().resolveUri(context, v) : null; 
+          if (url != null) {           
+            x.ah(context.prefixLocalHref(url)).addText(v); 
+          } else if (Utilities.isAbsoluteUrlLinkable(v) && !uri.fhirType().equals("id")) { 
+            x.ah(context.prefixLocalHref(v)).addText(v); 
+          } else { 
+            x.addText(v); 
+          } 
+        } 
+      } 
+    }
+  } 
   
-  protected void renderTiming(XhtmlNode x, Timing s) throws FHIRException {
-    x.addText(displayTiming(s));
+  protected void renderAnnotation(RenderingStatus status, XhtmlNode x, ResourceWrapper a) throws FHIRException { 
+    StringBuilder b = new StringBuilder(); 
+    if (a.has("text")) { 
+      b.append(context.getTranslated(a.child("text"))); 
+    } 
+
+    if (a.has("text") && (a.has("author") || a.has("time"))) { 
+      b.append(" ("); 
+    } 
+
+    if (a.has("author")) { 
+      b.append(context.formatPhrase(RenderingContext.DATA_REND_BY) + " "); 
+      ResourceWrapper auth = a.child("author");
+      if (auth.fhirType().equals("Reference")) { 
+        b.append(auth.primitiveValue("reference")); 
+      } else if (auth.fhirType().equals("string")) { 
+        b.append(context.getTranslated(auth)); 
+      } 
+    } 
+
+
+    if (a.has("time")) { 
+      if (b.length() > 0) { 
+        b.append(" "); 
+      } 
+      b.append("@").append(displayDateTime(a.child("time"))); 
+    } 
+    if (a.has("text") && (a.has("author") || a.has("time"))) { 
+      b.append(")"); 
+    } 
+
+
+    x.addText(b.toString()); 
+  } 
+
+  public String displayCoding(ResourceWrapper c) { 
+    String s = ""; 
+    if (context.isTechnicalMode()) { 
+      s = context.getTranslated(c.child("display")); 
+      if (Utilities.noString(s)) { 
+        s = lookupCode(c.primitiveValue("system"), c.primitiveValue("version"), c.primitiveValue("code"));         
+      } 
+      if (Utilities.noString(s)) { 
+        s = displayCodeTriple(c.primitiveValue("system"), c.primitiveValue("version"), c.primitiveValue("code")); 
+      } else if (c.has("system")) { 
+        s = s + " ("+displayCodeTriple(c.primitiveValue("system"), c.primitiveValue("version"), c.primitiveValue("code"))+")"; 
+      } else if (c.has("code")) { 
+        s = s + " ("+c.primitiveValue("code")+")"; 
+      } 
+    } else { 
+      if (c.has("display")) 
+        return context.getTranslated(c.child("display")); 
+      if (Utilities.noString(s)) 
+        s = lookupCode(c.primitiveValue("system"), c.primitiveValue("version"), c.primitiveValue("code")); 
+      if (Utilities.noString(s)) 
+        s = c.primitiveValue("code"); 
+    } 
+    return s; 
+  } 
+
+  private String displayCodeSource(String system, String version) { 
+    String s = displaySystem(system); 
+    if (version != null) { 
+      s = s + "["+describeVersion(version)+"]"; 
+    } 
+    return s;     
+  } 
+
+  private String displayCodeTriple(String system, String version, String code) { 
+    if (system == null) { 
+      if (code == null) { 
+        return ""; 
+      } else { 
+        return "#"+code; 
+      } 
+    } else { 
+      String s = displayCodeSource(system, version); 
+      if (code != null) { 
+        s = s + "#"+code; 
+      } 
+      return s; 
+    } 
+  } 
+
+  public String displayCoding(List<Coding> list) { 
+    CommaSeparatedStringBuilder b = new CommaSeparatedStringBuilder(); 
+    for (Coding c : list) { 
+      b.append(displayCoding(wrapNC(c))); 
+    } 
+    return b.toString(); 
+  } 
+
+  protected void renderCoding(HierarchicalTableGenerator gen, List<Piece> pieces, Coding c) { 
+    if (c.isEmpty()) { 
+      return; 
+    } 
+
+    String url = getLinkForSystem(c.getSystem(), c.getVersion()); 
+    String name = displayCodeSource(c.getSystem(), c.getVersion()); 
+    if (!Utilities.noString(url)) { 
+      pieces.add(gen.new Piece(url, name, c.getSystem()+(c.hasVersion() ? "#"+c.getVersion() : ""))); 
+    } else {  
+      pieces.add(gen.new Piece(null, name, c.getSystem()+(c.hasVersion() ? "#"+c.getVersion() : ""))); 
+    } 
+    pieces.add(gen.new Piece(null, "#"+c.getCode(), null)); 
+    String s = context.getTranslated(c.getDisplayElement()); 
+    if (Utilities.noString(s)) { 
+      s = lookupCode(c.getSystem(), c.getVersion(), c.getCode()); 
+    } 
+    if (!Utilities.noString(s)) { 
+      pieces.add(gen.new Piece(null, " \""+s+"\"", null)); 
+    } 
+  } 
+
+  protected void renderCoding(HierarchicalTableGenerator gen, List<Piece> pieces, ResourceWrapper c) { 
+    if (c.isEmpty()) { 
+      return; 
+    } 
+
+    String url = getLinkForSystem(c.primitiveValue("system"), c.primitiveValue("version")); 
+    String name = displayCodeSource(c.primitiveValue("system"), c.primitiveValue("version")); 
+    if (!Utilities.noString(url)) { 
+      pieces.add(gen.new Piece(url, name, c.primitiveValue("system")+(c.has("version") ? "#"+c.primitiveValue("version") : ""))); 
+    } else {  
+      pieces.add(gen.new Piece(null, name, c.primitiveValue("system")+(c.has("version") ? "#"+c.primitiveValue("version") : ""))); 
+    } 
+    pieces.add(gen.new Piece(null, "#"+c.primitiveValue("code"), null)); 
+    String s = context.getTranslated(c.child("display")); 
+    if (Utilities.noString(s)) { 
+      s = lookupCode(c.primitiveValue("system"), c.primitiveValue("version"), c.primitiveValue("code")); 
+    } 
+    if (!Utilities.noString(s)) { 
+      pieces.add(gen.new Piece(null, " \""+s+"\"", null)); 
+    } 
+  } 
+
+  private String getLinkForSystem(String system, String version) { 
+    if ("http://snomed.info/sct".equals(system)) { 
+      return "https://browser.ihtsdotools.org/";       
+    } else if ("http://loinc.org".equals(system)) { 
+      return "https://loinc.org/";             
+    } else if ("http://unitsofmeasure.org".equals(system)) { 
+      return "http://ucum.org";             
+    } else { 
+      String url = system; 
+      if (version != null) { 
+        url = url + "|"+version; 
+      } 
+      CodeSystem cs = context.getWorker().fetchCodeSystem(url); 
+      if (cs != null && cs.hasWebPath()) { 
+        return cs.getWebPath(); 
+      } 
+      return null; 
+    } 
+  } 
+
+  protected String getLinkForCode(String system, String version, String code) { 
+    if ("http://snomed.info/sct".equals(system)) { 
+      if (!Utilities.noString(code)) { 
+        return "http://snomed.info/id/"+code;         
+      } else { 
+        return "https://browser.ihtsdotools.org/"; 
+      } 
+    } else if ("http://loinc.org".equals(system)) { 
+      if (!Utilities.noString(code)) { 
+        return "https://loinc.org/"+code; 
+      } else { 
+        return "https://loinc.org/"; 
+      } 
+    } else if ("http://www.nlm.nih.gov/research/umls/rxnorm".equals(system)) { 
+      if (!Utilities.noString(code)) { 
+        return "https://mor.nlm.nih.gov/RxNav/search?searchBy=RXCUI&searchTerm="+code;         
+      } else { 
+        return "https://www.nlm.nih.gov/research/umls/rxnorm/index.html"; 
+      } 
+    } else if ("urn:iso:std:iso:3166".equals(system)) { 
+      if (!Utilities.noString(code)) { 
+        return "https://en.wikipedia.org/wiki/ISO_3166-2:"+code;         
+      } else { 
+        return "https://en.wikipedia.org/wiki/ISO_3166-2"; 
+      } 
+    } else { 
+      CodeSystem cs = context.getWorker().fetchCodeSystem(system, version); 
+      if (cs != null && cs.hasWebPath()) { 
+        if (!Utilities.noString(code)) { 
+          return cs.getWebPath()+"#"+cs.getId()+"-"+Utilities.nmtokenize(code); 
+        } else { 
+          return cs.getWebPath(); 
+        } 
+      } 
+    }   
+    return null; 
+  } 
+
+  public CodeResolution resolveCode(String system, String code) { 
+    return resolveCode(new Coding().setSystem(system).setCode(code)); 
+  } 
+
+  public CodeResolution resolveCode(ResourceWrapper c) { 
+    String systemName; 
+    String systemLink; 
+    String link; 
+    String display = null; 
+    String hint; 
+
+    if (c.has("display")) 
+      display = context.getTranslated(c.child("display")); 
+    if (Utilities.noString(display)) 
+      display = lookupCode(c.primitiveValue("system"), c.primitiveValue("version"), c.primitiveValue("code")); 
+    if (Utilities.noString(display)) { 
+      display = c.primitiveValue("code"); 
+    } 
+
+    CodeSystem cs = context.getWorker().fetchCodeSystem(c.primitiveValue("system")); 
+    systemLink = cs != null ? cs.getWebPath() : null; 
+    systemName = cs != null ? crPresent(cs) : displaySystem(c.primitiveValue("system")); 
+    link = getLinkForCode(c.primitiveValue("system"), c.primitiveValue("version"), c.primitiveValue("code")); 
+
+    hint = systemName+": "+display+(c.has("version") ? " "+ context.formatPhrase(RenderingContext.DATA_REND_VERSION, c.primitiveValue("version"), ")") : ""); 
+    return new CodeResolution(systemName, systemLink, link, display, hint); 
+  } 
+
+  public CodeResolution resolveCode(Coding code) {
+    return resolveCode(wrapNC(code));
   }
 
+  public CodeResolution resolveCode(CodeableConcept code) { 
+    if (code.hasCoding()) { 
+      return resolveCode(code.getCodingFirstRep()); 
+    } else { 
+      return new CodeResolution(null, null, null, code.getText(), code.getText()); 
+    } 
+  } 
+  protected void renderCodingWithDetails(RenderingStatus status, XhtmlNode x, ResourceWrapper c) { 
+    String s = ""; 
+    if (c.has("display")) 
+      s = context.getTranslated(c.child("display")); 
+    if (Utilities.noString(s)) 
+      s = lookupCode(c.primitiveValue("system"), c.primitiveValue("version"), c.primitiveValue("code")); 
 
-  private String displaySampledData(SampledData s) {
-    CommaSeparatedStringBuilder b = new CommaSeparatedStringBuilder();
-    if (s.hasOrigin())
-      b.append("Origin: "+displayQuantity(s.getOrigin()));
+    CodeSystem cs = context.getWorker().fetchCodeSystem(c.primitiveValue("system")); 
 
-    if (s.hasInterval()) {
-      b.append("Interval: "+s.getInterval().toString());
+    String sn = cs != null ? crPresent(cs) : displaySystem(c.primitiveValue("system")); 
+    String link = getLinkForCode(c.primitiveValue("system"), c.primitiveValue("version"), c.primitiveValue("code")); 
+    if (link != null) { 
+      x.ah(context.prefixLocalHref(link)).tx(sn); 
+    } else { 
+      x.tx(sn); 
+    } 
 
-      if (s.hasIntervalUnit())
-        b.append(s.getIntervalUnit().toString());
+    x.tx(" "); 
+    x.tx(c.primitiveValue("code")); 
+    if (!Utilities.noString(s)) { 
+      x.tx(": "); 
+      x.tx(s); 
+    } 
+    if (c.has("version")) { 
+      x.tx(" "+context.formatPhrase(RenderingContext.DATA_REND_VERSION, c.primitiveValue("version"), ")")); 
+    } 
+  } 
+
+  protected void renderCoding(RenderingStatus status, XhtmlNode x, ResourceWrapper c) { 
+    String s = ""; 
+    if (c.has("display")) 
+      s = context.getTranslated(c.child("display")); 
+    if (Utilities.noString(s)) 
+      s = lookupCode(c.primitiveValue("system"), c.primitiveValue("version"), c.primitiveValue("code")); 
+
+    if (Utilities.noString(s)) 
+      s = c.primitiveValue("code"); 
+
+    if (context.isTechnicalMode()) { 
+      x.addText(s+" "+context.formatPhrase(RenderingContext.DATA_REND_DETAILS_STATED, displaySystem(c.primitiveValue("system")), c.primitiveValue("code"), " = '", lookupCode(c.primitiveValue("system"), c.primitiveValue("version"), c.primitiveValue("code")), c.primitiveValue("display"), "')")); 
+    } else 
+      x.span(null, "{"+c.primitiveValue("system")+" "+c.primitiveValue("code")+"}").addText(s); 
+  } 
+
+  public String displayCodeableConcept(ResourceWrapper cc) { 
+    String s = context.getTranslated(cc.child("Text")); 
+    if (Utilities.noString(s)) { 
+      for (ResourceWrapper c : cc.children("coding")) { 
+        if (c.has("display")) { 
+          s = context.getTranslated(c.child("display")); 
+          break; 
+        } 
+      } 
+    } 
+    if (Utilities.noString(s)) { 
+      // still? ok, let's try looking it up 
+      for (ResourceWrapper c : cc.children("coding")) { 
+        if (c.has("code") && c.has("system")) { 
+          s = lookupCode(c.primitiveValue("system"), c.primitiveValue("version"), c.primitiveValue("code")); 
+          if (!Utilities.noString(s)) 
+            break; 
+        } 
+      } 
+    } 
+
+    if (Utilities.noString(s)) { 
+      if (!cc.has("coding")) 
+        s = ""; 
+      else 
+        s = cc.children("coding").get(0).primitiveValue("code"); 
+    } 
+    return s; 
+  } 
+
+
+  protected void renderCodeableReference(RenderingStatus status, XhtmlNode x, ResourceWrapper e) throws FHIRFormatError, DefinitionException, IOException { 
+    if (e.has("concept")) { 
+      renderCodeableConcept(status, x, e.child("concept")); 
+    } 
+    if (e.has("reference")) { 
+      renderReference(status, x, e.child("reference")); 
+    } 
+  } 
+
+  protected void renderCodeableConcept(RenderingStatus status, XhtmlNode x, ResourceWrapper cc) throws FHIRFormatError, DefinitionException, IOException { 
+    if (cc.isEmpty()) { 
+      return; 
+    } 
+
+    String s = context.getTranslated(cc.child("text")); 
+    if (Utilities.noString(s)) { 
+      for (ResourceWrapper c : cc.children("coding")) { 
+        if (c.has("display")) { 
+          s = context.getTranslated(c.child("display")); 
+          break; 
+        } 
+      } 
+    } 
+    if (Utilities.noString(s)) { 
+      // still? ok, let's try looking it up 
+      for (ResourceWrapper c : cc.children("coding")) { 
+        if (c.has("code") && c.has("system")) { 
+          s = lookupCode(c.primitiveValue("system"), c.primitiveValue("version"), c.primitiveValue("code")); 
+          if (!Utilities.noString(s)) 
+            break; 
+        } 
+      } 
+    } 
+
+    if (Utilities.noString(s)) { 
+      if (!cc.has("coding")) 
+        s = ""; 
+      else 
+        s = cc.children("coding").get(0).primitiveValue("code"); 
+    } 
+
+    if (status.isShowCodeDetails()) { 
+      x.addText(s+" "); 
+      XhtmlNode sp = x.span("background: LightGoldenRodYellow; margin: 4px; border: 1px solid khaki", null); 
+      sp.tx(" ("); 
+      boolean first = true; 
+      for (ResourceWrapper c : cc.children("coding")) { 
+        if (first) { 
+          first = false; 
+        } else { 
+          sp.tx("; "); 
+        } 
+        String url = getLinkForSystem(c.primitiveValue("system"), c.primitiveValue("version")); 
+        if (url != null) { 
+          sp.ah(context.prefixLocalHref(url)).tx(displayCodeSource(c.primitiveValue("system"), c.primitiveValue("version"))); 
+        } else { 
+          sp.tx(displayCodeSource(c.primitiveValue("system"), c.primitiveValue("version"))); 
+        } 
+        if (c.has("code")) { 
+          sp.tx("#"+c.primitiveValue("code")); 
+        } 
+        if (c.has("display") && !s.equals(c.primitiveValue("display"))) { 
+          sp.tx(" \""+context.getTranslated(c.child("display"))+"\""); 
+        } 
+      } 
+      if (hasRenderableExtensions(cc)) { 
+        if (!first) { 
+          sp.tx("; "); 
+        } 
+        renderExtensionsInText(status, sp, cc, ";"); 
+      } 
+      sp.tx(")"); 
+    } else { 
+
+      CommaSeparatedStringBuilder b = new CommaSeparatedStringBuilder(); 
+      for (ResourceWrapper c : cc.children("coding")) { 
+        if (c.has("code") && c.has("system")) { 
+          b.append("{"+c.primitiveValue("system")+" "+c.primitiveValue("code")+"}"); 
+        } 
+      } 
+
+      x.span(null, context.formatPhrase(RenderingContext.DATA_REND_CODES) +b.toString()).addText(s); 
+    } 
+  } 
+
+  protected String displayIdentifier(ResourceWrapper ii) { 
+    String s = Utilities.noString(ii.primitiveValue("value")) ? "?ngen-9?" : ii.primitiveValue("value"); 
+    if ("urn:ietf:rfc:3986".equals(ii.primitiveValue("system")) && s.startsWith("urn:oid:")) { 
+      s = "OID:"+s.substring(8); 
+    } else if ("urn:ietf:rfc:3986".equals(ii.primitiveValue("system")) && s.startsWith("urn:uuid:")) { 
+      s = "UUID:"+s.substring(9); 
+    } else {  
+      NamingSystem ns = context.getContext().getNSUrlMap().get(ii.primitiveValue("system")); 
+      if (ns != null) { 
+        s = crPresent(ns)+"#"+s; 
+      } 
+      if (ii.has("type")) { 
+        ResourceWrapper type = ii.child("type");
+        if (type.has("text")) 
+          s = context.getTranslated(type.child("text"))+":\u00A0"+s; 
+        else if (type.has("coding") && type.children("coding").get(0).has("display")) 
+          s = context.getTranslated(type.children("coding").get(0).child("display"))+": "+s; 
+        else if (type.has("coding") && type.children("coding").get(0).has("code")) 
+          s = lookupCode(type.children("coding").get(0).primitiveValue("system"), type.children("coding").get(0).primitiveValue("version"), type.children("coding").get(0).primitiveValue("code")); 
+      } else if (ii.has("system")) { 
+        s = ii.primitiveValue("system")+"#"+s; 
+      } 
+    } 
+
+    if (ii.has("use") || ii.has("period")) { 
+      s = s + "\u00A0("; 
+      if (ii.has("use")) { 
+        s = s + "use:\u00A0"+ii.primitiveValue("use"); 
+      } 
+      if (ii.has("use") || ii.has("period")) { 
+        s = s + ",\u00A0"; 
+      } 
+      if (ii.has("period")) { 
+        s = s + "period:\u00A0"+displayPeriod(ii.child("period")); 
+      } 
+      s = s + ")"; 
+    }     
+    return s; 
+  } 
+
+  protected void renderIdentifier(RenderingStatus status, XhtmlNode x, ResourceWrapper ii) {     
+    if (ii.has("type")) { 
+      ResourceWrapper type = ii.child("type");
+      if (type.has("text")) { 
+        x.tx(context.getTranslated(type.child("text"))); 
+      } else if (type.has("coding") && type.children("coding").get(0).has("display")) { 
+        x.tx(context.getTranslated(type.children("coding").get(0).child("display"))); 
+      } else if (type.has("coding") && type.children("coding").get(0).has("code")) { 
+        x.tx(lookupCode(type.children("coding").get(0).primitiveValue("system"), type.children("coding").get(0).primitiveValue("version"), type.children("coding").get(0).primitiveValue("code"))); 
+      } 
+      x.tx("/"); 
+    } else if (ii.has("system")) { 
+      NamingSystem ns = context.getContext().getNSUrlMap().get(ii.primitiveValue("system")); 
+      if (ns != null) { 
+        if (ns.hasWebPath()) { 
+          x.ah(context.prefixLocalHref(ns.getWebPath()), ns.getDescription()).tx(crPresent(ns));         
+        } else { 
+          x.tx(crPresent(ns)); 
+        } 
+      } else { 
+        switch (ii.primitiveValue("system")) { 
+        case "urn:oid:2.51.1.3": 
+          x.ah("https://www.gs1.org/standards/id-keys/gln", context.formatPhrase(RenderingContext.DATA_REND_GLN)).tx("GLN"); 
+          break; 
+        default: 
+          x.code(ii.primitiveValue("system"));       
+        } 
+      } 
+      x.tx("/"); 
+    } 
+    x.tx(Utilities.noString(ii.primitiveValue("value")) ? "?ngen-9?" : ii.primitiveValue("value")); 
+
+    if (ii.has("use") || ii.has("period")) { 
+      x.nbsp(); 
+      x.tx("("); 
+      if (ii.has("use")) { 
+        x.tx(context.formatPhrase(RenderingContext.DATA_REND_USE)); 
+        x.nbsp(); 
+        x.tx(ii.primitiveValue("use")); 
+      } 
+      if (ii.has("use") || ii.has("period")) { 
+        x.tx(","); 
+        x.nbsp(); 
+      } 
+      if (ii.has("period")) { 
+        x.tx(context.formatPhrase(RenderingContext.DATA_REND_PERIOD)); 
+        x.nbsp(); 
+        x.tx(displayPeriod(ii.child("period"))); 
+      } 
+      x.tx(")"); 
+    }         
+  } 
+
+  public static String displayHumanName(ResourceWrapper name) { 
+    StringBuilder s = new StringBuilder(); 
+    if (name.has("text")) 
+      s.append(name.primitiveValue("text")); 
+    else { 
+      for (ResourceWrapper p : name.children("given")) { 
+        s.append(p.primitiveValue()); 
+        s.append(" "); 
+      } 
+      if (name.has("family")) { 
+        s.append(name.primitiveValue("family")); 
+        s.append(" "); 
+      } 
+    } 
+    if (name.has("use") && !name.primitiveValue("use").equals("usual")) 
+      s.append("("+name.primitiveValue("use")+")"); 
+    return s.toString(); 
+  } 
+
+
+  protected void renderHumanName(RenderingStatus status, XhtmlNode x, ResourceWrapper name) { 
+    StringBuilder s = new StringBuilder(); 
+    if (name.has("text")) 
+      s.append(context.getTranslated(name.child("text"))); 
+    else { 
+      for (ResourceWrapper p : name.children("given")) { 
+        s.append(context.getTranslated(p)); 
+        s.append(" "); 
+      } 
+      if (name.has("family")) { 
+        s.append(context.getTranslated(name.child("family"))); 
+        s.append(" "); 
+      } 
+    } 
+    if (name.has("use") && !name.primitiveValue("use").equals("usual")) { 
+      s.append("("+context.getTranslatedCode(name.primitiveValue("use"), "http://hl7.org/fhir/name-use")+")");
+    }
+    x.addText(s.toString()); 
+  } 
+
+  private String displayAddress(ResourceWrapper address) { 
+    StringBuilder s = new StringBuilder(); 
+    if (address.has("text")) 
+      s.append(context.getTranslated(address.child("text"))); 
+    else { 
+      for (ResourceWrapper p : address.children("line")) { 
+        s.append(context.getTranslated(p)); 
+        s.append(" "); 
+      } 
+      if (address.has("city")) { 
+        s.append(context.getTranslated(address.child("city"))); 
+        s.append(" "); 
+      } 
+      if (address.has("state")) { 
+        s.append(context.getTranslated(address.child("state"))); 
+        s.append(" "); 
+      } 
+
+      if (address.has("postalCode")) { 
+        s.append(context.getTranslated(address.child("postalCode"))); 
+        s.append(" "); 
+      } 
+
+      if (address.has("country")) { 
+        s.append(context.getTranslated(address.child("country"))); 
+        s.append(" "); 
+      } 
+    } 
+    if (address.has("use")) {
+      s.append("("+address.primitiveValue("use")+")");
+    }
+    return s.toString(); 
+  } 
+
+  protected void renderAddress(RenderingStatus status, XhtmlNode x, ResourceWrapper address) { 
+    x.addText(displayAddress(address)); 
+  } 
+
+
+  public String displayContactPoint(ResourceWrapper contact) { 
+    StringBuilder s = new StringBuilder(); 
+    s.append(describeSystem(contact.primitiveValue("system"))); 
+    if (Utilities.noString(contact.primitiveValue("value"))) 
+      s.append("-unknown-"); 
+    else 
+      s.append(contact.primitiveValue("value")); 
+    if (contact.has("use")) 
+      s.append("("+getTranslatedCode(contact.child("use"))+")"); 
+    return s.toString(); 
+  } 
+
+  public String displayContactDetail(ResourceWrapper contact) { 
+    CommaSeparatedStringBuilder s = new CommaSeparatedStringBuilder(); 
+    for (ResourceWrapper cp : contact.children("telecom")) { 
+      s.append(displayContactPoint(cp)); 
+    } 
+    return contact.primitiveValue("name")+(s.length() == 0 ? "" : " ("+s.toString()+")"); 
+  } 
+
+  protected String getLocalizedBigDecimalValue(BigDecimal input, Currency c) { 
+    NumberFormat numberFormat = NumberFormat.getNumberInstance(context.getLocale()); 
+    numberFormat.setGroupingUsed(true); 
+    numberFormat.setMaximumFractionDigits(c.getDefaultFractionDigits()); 
+    numberFormat.setMinimumFractionDigits(c.getDefaultFractionDigits()); 
+    return numberFormat.format(input); 
+  } 
+
+  protected void renderMoney(RenderingStatus status, XhtmlNode x, ResourceWrapper money) { 
+    if (x.getName().equals("blockquote")) { 
+      x = x.para(); 
+    } 
+    Currency c = money.has("currency") ? Currency.getInstance(money.primitiveValue("currency")) : null; 
+    if (c != null) { 
+      XhtmlNode s = x.span(null, c.getDisplayName()); 
+      s.tx(c.getSymbol(context.getLocale())); 
+      s.tx(getLocalizedBigDecimalValue(new BigDecimal(money.primitiveValue("value")), c)); 
+      x.tx(" ("+c.getCurrencyCode()+")"); 
+    } else { 
+      if (money.has("currency")) { 
+        x.tx(money.primitiveValue("currency")); 
+      } 
+      x.tx(money.primitiveValue("value")); 
+    } 
+  } 
+
+  protected void renderExpression(RenderingStatus status, XhtmlNode x, ResourceWrapper expr) { 
+    // there's two parts: what the expression is, and how it's described.  
+    // we start with what it is, and then how it's described  
+    XhtmlNode p = x; 
+    if (p.getName().equals("blockquote")) { 
+      p = p.para(); 
+    } 
+    if (expr.has("expression")) { 
+      if (expr.has("reference")) { 
+        p = x.ah(context.prefixLocalHref(expr.primitiveValue("reference")));         
+      } 
+      XhtmlNode c = p; 
+      if (expr.has("language")) { 
+        c = c.span(null, expr.primitiveValue("language")); 
+      } 
+      c.code().tx(expr.primitiveValue("expression")); 
+    } else if (expr.has("reference")) { 
+      p.ah(context.prefixLocalHref(expr.primitiveValue("reference"))).tx(context.formatPhrase(RenderingContext.DATA_REND_SOURCE)); 
+    } 
+    if (expr.has("name") || expr.has("description")) { 
+      p.tx("("); 
+      if (expr.has("name")) { 
+        p.b().tx(expr.primitiveValue("name")); 
+      } 
+      if (expr.has("description")) { 
+        p.tx("\""); 
+        p.tx(context.getTranslated(expr.child("description"))); 
+        p.tx("\""); 
+      } 
+      p.tx(")"); 
+    } 
+  } 
+
+
+  protected void renderContactPoint(RenderingStatus status, XhtmlNode x, ResourceWrapper contact) { 
+    if (contact != null) { 
+      if (!contact.has("system")) { 
+        x.addText(displayContactPoint(contact));         
+      } else { 
+        String v = contact.primitiveValue("value");
+        switch (contact.primitiveValue("system")) { 
+        case "email": 
+          x.ah("mailto:"+v).tx(v); 
+          break; 
+        case "fax": 
+          x.addText(displayContactPoint(contact)); 
+          break; 
+        case "other": 
+          x.addText(displayContactPoint(contact)); 
+          break; 
+        case "pager": 
+          x.addText(displayContactPoint(contact)); 
+          break; 
+        case "phone": 
+          if (contact.has("value") && v != null && v.startsWith("+")) { 
+            x.ah("tel:"+v.replace(" ", "")).tx(v); 
+          } else { 
+            x.addText(displayContactPoint(contact)); 
+          } 
+          break; 
+        case "sms": 
+          x.addText(displayContactPoint(contact)); 
+          break; 
+        case "url": 
+          x.ah(context.prefixLocalHref(v)).tx(v); 
+          break; 
+        default: 
+          break;       
+        } 
+      } 
+    } 
+  } 
+
+  protected void displayContactPoint(XhtmlNode p, ContactPoint c) { 
+    if (c != null) { 
+      if (c.getSystem() == ContactPointSystem.PHONE) { 
+        p.tx(context.formatPhrase(RenderingContext.DATA_REND_PHONE, c.getValue()) + " "); 
+      } else if (c.getSystem() == ContactPointSystem.FAX) { 
+        p.tx(context.formatPhrase(RenderingContext.DATA_REND_FAX, c.getValue()) + " "); 
+      } else if (c.getSystem() == ContactPointSystem.EMAIL) { 
+        p.tx(c.getValue()); 
+      } else if (c.getSystem() == ContactPointSystem.URL) { 
+        if (c.getValue().length() > 30) { 
+          p.addText(c.getValue().substring(0, 30)+"..."); 
+        } else { 
+          p.addText(c.getValue()); 
+        } 
+      } 
+    } 
+  } 
+
+  protected void addTelecom(XhtmlNode p, ResourceWrapper c) { 
+    String sys = c.primitiveValue("system");
+    String value = c.primitiveValue("value");
+    if (sys.equals("phone")) { 
+      p.tx(context.formatPhrase(RenderingContext.DATA_REND_PHONE, value) + " "); 
+    } else if (sys.equals("fax")) { 
+      p.tx(context.formatPhrase(RenderingContext.DATA_REND_FAX, value) + " "); 
+    } else if (sys.equals("email")) { 
+      p.ah("mailto:"+value).addText(value); 
+    } else if (sys.equals("url")) { 
+      if (value.length() > 30) 
+        p.ah(context.prefixLocalHref(value)).addText(value.substring(0, 30)+"..."); 
+      else 
+        p.ah(context.prefixLocalHref(value)).addText(value); 
+    } 
+  } 
+  private static String describeSystem(String system) { 
+    if (system == null) 
+      return ""; 
+    switch (system) { 
+    case "phone": return "ph: "; 
+    case "fax": return "fax: "; 
+    default: 
+      return ""; 
+    } 
+  } 
+
+  protected String displayQuantity(ResourceWrapper q) { 
+    if (q == null) {
+      return "";
+    }
+    StringBuilder s = new StringBuilder(); 
+
+    s.append(q.has("value") ? q.primitiveValue("value") : "?"); 
+    if (q.has("unit")) 
+      s.append(" ").append(q.primitiveValue("unit")); 
+    else if (q.has("code")) 
+      s.append(" ").append(q.primitiveValue("code")); 
+
+    return s.toString(); 
+  }   
+
+  protected void renderQuantity(RenderingStatus status, XhtmlNode x, ResourceWrapper q) { 
+    if (q.has("comparator")) 
+      x.addText(q.primitiveValue("comparator")); 
+    if (q.has("value")) { 
+      x.addText(context.getTranslated(q.child("value"))); 
+    } 
+    if (q.has("unit")) 
+      x.tx(" "+context.getTranslated(q.child("unit"))); 
+    else if (q.has("code") && q.has("system")) { 
+      // if there's a code there *shall* be a system, so if we've got one and not the other, things are invalid and we won't bother trying to render 
+      if (q.has("system") && q.primitiveValue("system").equals("http://unitsofmeasure.org")) 
+        x.tx(" "+q.primitiveValue("code")); 
+      else 
+        x.tx("(unit "+q.primitiveValue("code")+" from "+q.primitiveValue("system")+")"); 
+    } 
+    if (context.isTechnicalMode() && q.has("code")) { 
+      x.span("background: LightGoldenRodYellow", null).tx(" "+ (context.formatPhrase(RenderingContext.DATA_REND_DETAILS, displaySystem(q.primitiveValue("system")))) +q.primitiveValue("code")+" = '"+lookupCode(q.primitiveValue("system"), null, q.primitiveValue("code"))+"')"); 
+    } 
+  } 
+
+
+  protected void renderQuantity(HierarchicalTableGenerator gen, List<Piece> pieces, ResourceWrapper q, boolean showCodeDetails) { 
+    pieces.add(gen.new Piece(null, displayQuantity(q), null)); 
+  } 
+
+  protected void renderQuantity(HierarchicalTableGenerator gen, List<Piece> pieces, Quantity q, boolean showCodeDetails) { 
+    pieces.add(gen.new Piece(null, displayQuantity(wrapNC(q)), null)); 
+  } 
+
+  public String displayRange(ResourceWrapper q) { 
+    if (!q.has("low") && !q.has("high")) 
+      return "?"; 
+
+    StringBuilder b = new StringBuilder(); 
+
+    ResourceWrapper lowC = q.child("low");
+    ResourceWrapper highC = q.child("high");
+    boolean sameUnits = (lowC != null && highC != null) && ((lowC.has("unit") && highC.has("unit") && lowC.child("unit").matches(highC.child("unit")))  
+        || (lowC.has("code") && highC.has("code") && lowC.child("code").matches(highC.child("code")))); 
+    String low = "?"; 
+    if (q.has("low") && lowC.has("value")) 
+      low = sameUnits ? lowC.primitiveValue("value").toString() : displayQuantity(lowC); 
+    String high = displayQuantity(highC); 
+    if (high.isEmpty()) 
+      high = "?"; 
+    b.append(low).append("\u00A0to\u00A0").append(high); 
+    return b.toString(); 
+  } 
+
+  protected void renderRange(RenderingStatus status, XhtmlNode x, ResourceWrapper q) { 
+    if (q.has("low")) 
+      x.addText(q.child("low").primitiveValue("value").toString()); 
+    else 
+      x.tx("?"); 
+    x.tx("-"); 
+    if (q.has("high")) 
+      x.addText(q.child("high").primitiveValue("value").toString()); 
+    else 
+      x.tx("?"); 
+    if (q.child("low").has("unit")) 
+      x.tx(" "+q.child("low").child("unit")); 
+  } 
+
+  public String displayPeriod(ResourceWrapper p) { 
+    String s = !p.has("start") ? "(?)" : displayDateTime(p.child("start")); 
+    s = s + " --> "; 
+    return s + (!p.has("end") ? context.formatPhrase(RenderingContext.DATA_REND_ONGOING) : displayDateTime(p.child("end"))); 
+  } 
+
+  public void renderPeriod(RenderingStatus status, XhtmlNode x, ResourceWrapper p) { 
+    x.addText(!p.has("start") ? "??" : displayDateTime(p.child("start"))); 
+    x.tx(" --> "); 
+    x.addText(!p.has("end") ? context.formatPhrase(RenderingContext.DATA_REND_ONGOING) : displayDateTime(p.child("end"))); 
+  } 
+
+  public void renderUsageContext(RenderingStatus status, XhtmlNode x, ResourceWrapper u) throws FHIRFormatError, DefinitionException, IOException { 
+    renderCoding(status, x, u.child("code")); 
+    x.tx(": "); 
+    renderDataType(status, x, u.child("value"));     
+  } 
+
+
+  public void renderTriggerDefinition(RenderingStatus status, XhtmlNode x, ResourceWrapper td) throws FHIRFormatError, DefinitionException, IOException { 
+    if (x.isPara()) { 
+      x.b().tx(context.formatPhrase(RenderingContext.GENERAL_TYPE)); 
+      x.tx(": "); 
+      x.tx(td.child("type").primitiveValue("display")); 
+
+      if (td.has("name")) {     
+        x.tx(", "); 
+        x.b().tx(context.formatPhrase(RenderingContext.GENERAL_NAME)); 
+        x.tx(": "); 
+        x.tx(context.getTranslated(td.child("name"))); 
+      } 
+      if (td.has("code")) {     
+        x.tx(", "); 
+        x.b().tx(context.formatPhrase(RenderingContext.GENERAL_CODE)); 
+        x.tx(": "); 
+        renderCodeableConcept(status, x, td.child("code")); 
+      } 
+      if (td.has("timing")) {     
+        x.tx(", "); 
+        x.b().tx(context.formatPhrase(RenderingContext.DATA_REND_TIMING)); 
+        x.tx(": "); 
+        renderDataType(status, x, td.child("timing")); 
+      } 
+      if (td.has("condition")) {     
+        x.tx(", "); 
+        x.b().tx(context.formatPhrase(RenderingContext.DATA_REND_COND)); 
+        x.tx(": "); 
+        renderExpression(status, x, td.child("condition")); 
+      }     
+    } else { 
+      XhtmlNode tbl = x.table("grid"); 
+
+      XhtmlNode tr = tbl.tr();   
+      tr.td().b().tx(context.formatPhrase(RenderingContext.GENERAL_TYPE)); 
+      tr.td().tx(td.child("type").primitiveValue("display")); 
+
+      if (td.has("name")) {     
+        tr = tbl.tr();   
+        tr.td().b().tx(context.formatPhrase(RenderingContext.GENERAL_NAME)); 
+        tr.td().tx(context.getTranslated(td.child("name"))); 
+      } 
+      if (td.has("code")) {     
+        tr = tbl.tr();   
+        tr.td().b().tx(context.formatPhrase(RenderingContext.GENERAL_CODE)); 
+        renderCodeableConcept(status, tr.td(), td.child("code")); 
+      } 
+      if (td.has("timing")) {     
+        tr = tbl.tr();   
+        tr.td().b().tx(context.formatPhrase(RenderingContext.DATA_REND_TIMING)); 
+        renderDataType(status, tr.td(), td.child("timing")); 
+      } 
+      if (td.has("condition")) {      
+        tr = tbl.tr();   
+        tr.td().b().tx(context.formatPhrase(RenderingContext.DATA_REND_COND)); 
+        renderExpression(status, tr.td(), td.child("condition")); 
+      }     
+    } 
+  } 
+
+  public void renderDataRequirement(RenderingStatus status, XhtmlNode x, ResourceWrapper dr) throws FHIRFormatError, DefinitionException, IOException { 
+    XhtmlNode tbl = x.table("grid"); 
+    XhtmlNode tr = tbl.tr();     
+    XhtmlNode td = tr.td().colspan("2"); 
+    td.b().tx(context.formatPhrase(RenderingContext.GENERAL_TYPE)); 
+    td.tx(": "); 
+    StructureDefinition sd = context.getWorker().fetchTypeDefinition(dr.primitiveValue("type")); 
+    if (sd != null && sd.hasWebPath()) { 
+      td.ah(context.prefixLocalHref(sd.getWebPath())).tx(dr.primitiveValue("type")); 
+    } else { 
+      td.tx(dr.primitiveValue("type")); 
+    } 
+    if (dr.has("profile")) { 
+      td.tx(" ("); 
+      boolean first = true; 
+      for (ResourceWrapper p : dr.children("profile")) { 
+        if (first) first = false; else td.tx(" | "); 
+        sd = context.getWorker().fetchResource(StructureDefinition.class, p.primitiveValue()); 
+        if (sd != null && sd.hasWebPath()) { 
+          td.ah(context.prefixLocalHref(sd.getWebPath())).tx(crPresent(sd)); 
+        } else { 
+          td.tx(p.primitiveValue()); 
+        } 
+      } 
+      td.tx(")"); 
+    } 
+    if (dr.has("subject")) { 
+      tr = tbl.tr();     
+      td = tr.td().colspan("2"); 
+      td.b().tx(context.formatPhrase(RenderingContext.GENERAL_SUBJ)); 
+      ResourceWrapper subj = dr.child("subject");
+      if (subj.fhirType().equals("reference")) { 
+        renderReference(status, td, subj); 
+      } else { 
+        renderCodeableConcept(status, td, subj); 
+      } 
+    } 
+    if (dr.has("codeFilter") || dr.has("dateFilter")) { 
+      tr = tbl.tr().backgroundColor("#efefef");     
+      tr.td().tx(context.formatPhrase(RenderingContext.GENERAL_FILTER)); 
+      tr.td().tx(context.formatPhrase(RenderingContext.GENERAL_VALUE)); 
+    } 
+    for (ResourceWrapper cf : dr.children("codeFilter")) { 
+      tr = tbl.tr();     
+      if (cf.has("path")) { 
+        tr.td().tx(cf.primitiveValue("path")); 
+      } else { 
+        tr.td().tx(context.formatPhrase(RenderingContext.DATA_REND_SEARCH, cf.primitiveValue("searchParam")) + " "); 
+      } 
+      if (cf.has("valueSet")) { 
+        td = tr.td(); 
+        td.tx(context.formatPhrase(RenderingContext.DATA_REND_VALUESET) + " "); 
+        renderDataType(status, td, cf.child("valueSet")); 
+      } else { 
+        boolean first = true; 
+        td = tr.td(); 
+        td.tx(context.formatPhrase(RenderingContext.DATA_REND_THESE_CODES) + " "); 
+        for (ResourceWrapper c : cf.children("code")) { 
+          if (first) first = false; else td.tx(", "); 
+          renderDataType(status, td, c); 
+        } 
+      } 
+    } 
+    for (ResourceWrapper cf : dr.children("dateFilter")) { 
+      tr = tbl.tr();     
+      if (cf.has("path")) { 
+        tr.td().tx(cf.primitiveValue("path")); 
+      } else { 
+        tr.td().tx(context.formatPhrase(RenderingContext.DATA_REND_SEARCH, cf.primitiveValue("searchParam")) + " "); 
+      } 
+      renderDataType(status, tr.td(), cf.child("value")); 
+    } 
+    if (dr.has("sort") || dr.has("limit")) { 
+      tr = tbl.tr();     
+      td = tr.td().colspan("2"); 
+      if (dr.has("limit")) { 
+        td.b().tx(context.formatPhrase(RenderingContext.DATA_REND_LIMIT)); 
+        td.tx(": "); 
+        td.tx(dr.primitiveValue("limit")); 
+        if (dr.has("sort")) { 
+          td.tx(", "); 
+        } 
+      } 
+      if (dr.has("sort")) { 
+        td.b().tx(context.formatPhrase(RenderingContext.DATA_REND_SORT)); 
+        td.tx(": "); 
+        boolean first = true; 
+        for (ResourceWrapper p : dr.children("sort")) { 
+          if (first) first = false; else td.tx(" | "); 
+          td.tx(p.primitiveValue("direction").equals("ascending") ? "+" : "-"); 
+          td.tx(p.primitiveValue("path")); 
+        } 
+      } 
+    } 
+  } 
+
+
+  private String displayTiming(ResourceWrapper s) throws FHIRException { 
+    CommaSeparatedStringBuilder b = new CommaSeparatedStringBuilder(); 
+    if (s.has("code")) {
+      b.append(context.formatPhrase(RenderingContext.GENERAL_CODE, displayCodeableConcept(s.child("code"))) + " "); 
     }
 
-    if (s.hasFactor())
-      b.append("Factor: "+s.getFactor().toString());
+    if (s.has("event")) { 
+      CommaSeparatedStringBuilder c = new CommaSeparatedStringBuilder(); 
+      for (ResourceWrapper p : s.children("event")) { 
+        if (p.hasPrimitiveValue()) { 
+          c.append(displayDateTime(p)); 
+        } else if (!renderExpression(c, p)) { 
+          c.append("??"); 
+        }         
+      } 
+      b.append(context.formatPhrase(RenderingContext.DATA_REND_EVENTS, c.toString()) + " "); 
+    } 
 
-    if (s.hasLowerLimit())
-      b.append("Lower: "+s.getLowerLimit().toString());
+    if (s.has("repeat")) { 
+      ResourceWrapper rep = s.child("repeat"); 
+      if (rep.has("boundsPeriod") && rep.child("boundsPeriod").has("start")) 
+        b.append(context.formatPhrase(RenderingContext.DATA_REND_STARTING, displayDateTime(rep.child("boundsPeriod").child("start"))) + " "); 
+      if (rep.has("count")) 
+        b.append(context.formatPhrase(RenderingContext.DATA_REND_COUNT, rep.primitiveValue("count")) + " " + " times"); 
+      if (rep.has("duration")) 
+        b.append(context.formatPhrase(RenderingContext.DATA_REND_DURATION, rep.primitiveValue("duration")+displayTimeUnits(rep.primitiveValue("periodUnit"))) + " "); 
 
-    if (s.hasUpperLimit())
-      b.append("Upper: "+s.getUpperLimit().toString());
+      if (rep.has("when")) { 
+        String st = ""; 
+        if (rep.has("offset")) { 
+          st = rep.primitiveValue("offset")+"min "; 
+        } 
+        b.append(st); 
+        for (ResourceWrapper wh : rep.children("when"))  {
+          b.append(displayEventCode(wh.primitiveValue()));
+        }
+      } else { 
+        String st = ""; 
+        if (!rep.has("frequency") || (!rep.has("frequencyMax") && rep.primitiveValue("frequency").equals("1"))) { 
+          st = context.formatPhrase(RenderingContext.DATA_REND_ONCE); 
+        } else { 
+          st = rep.primitiveValue("frequency"); 
+          if (rep.has("frequencyMax")) 
+            st = st + "-"+rep.primitiveValue("frequencyMax"); 
+        } 
+        if (rep.has("period")) { 
+          st = st + " "+ (context.formatPhrase(RenderingContext.DATA_REND_PER))+rep.primitiveValue("period"); 
+          if (rep.has("periodMax")) 
+            st = st + "-"+rep.primitiveValue("periodMax"); 
+          st = st + " "+displayTimeUnits(rep.primitiveValue("periodUnit")); 
+        } 
+        b.append(st); 
+      } 
+      if (rep.has("boundsPeriod") && rep.child("boundsPeriod").has("end")) 
+        b.append(context.formatPhrase(RenderingContext.DATA_REND_UNTIL, displayDateTime(rep.child("boundsPeriod").child("end"))) + " "); 
+    } 
+    return b.toString(); 
+  } 
 
-    if (s.hasDimensions())
-      b.append("Dimensions: "+s.getDimensions());
+  private boolean renderExpression(CommaSeparatedStringBuilder c, ResourceWrapper p) { 
+    ResourceWrapper exp = p.extensionValue("http://hl7.org/fhir/StructureDefinition/cqf-expression"); 
+    if (exp == null) { 
+      return false; 
+    } 
+    c.append(exp.child("value").primitiveValue("expression")); 
+    return true; 
+  } 
 
-    if (s.hasData())
-      b.append("Data: "+s.getData());
+  private String displayEventCode(String when) { 
+    switch (when) { 
+    case "c": return (context.formatPhrase(RenderingContext.DATA_REND_MEALS)); 
+    case "cd": return (context.formatPhrase(RenderingContext.DATA_REND_ATLUNCH)); 
+    case "cm": return (context.formatPhrase(RenderingContext.DATA_REND_ATBKFST)); 
+    case "cv": return (context.formatPhrase(RenderingContext.DATA_REND_ATDINR)); 
+    case "ac": return (context.formatPhrase(RenderingContext.DATA_REND_BFMEALS)); 
+    case "acd": return (context.formatPhrase(RenderingContext.DATA_REND_BFLUNCH)); 
+    case "acm": return (context.formatPhrase(RenderingContext.DATA_REND_BFBKFST)); 
+    case "acv": return (context.formatPhrase(RenderingContext.DATA_REND_BFDINR)); 
+    case "hs": return (context.formatPhrase(RenderingContext.DATA_REND_BFSLEEP)); 
+    case "pc": return (context.formatPhrase(RenderingContext.DATA_REND_AFTRMEALS)); 
+    case "pcd": return (context.formatPhrase(RenderingContext.DATA_REND_AFTRLUNCH)); 
+    case "pcm": return (context.formatPhrase(RenderingContext.DATA_REND_AFTRBKFST)); 
+    case "pcv": return (context.formatPhrase(RenderingContext.DATA_REND_AFTRDINR)); 
+    case "wake": return (context.formatPhrase(RenderingContext.DATA_REND_AFTRWKNG)); 
+    default: return "?ngen-6?"; 
+    } 
+  } 
 
-    return b.toString();
-  }
+  private String displayTimeUnits(String units) { 
+    if (units == null) 
+      return "?ngen-7?"; 
+    switch (units) { 
+    case "a": return "years"; 
+    case "d": return "days"; 
+    case "h": return "hours"; 
+    case "min": return "minutes"; 
+    case "mo": return "months"; 
+    case "s": return "seconds"; 
+    case "wk": return "weeks"; 
+    default: return "?ngen-8?"; 
+    } 
+  } 
 
-  protected void renderSampledData(XhtmlNode x, SampledData sampledData) {
-    x.addText(displaySampledData(sampledData));
-  }
+  protected void renderTiming(RenderingStatus status, XhtmlNode x, ResourceWrapper s) throws FHIRException { 
+    x.addText(displayTiming(s)); 
+  } 
 
-  public RenderingContext getContext() {
-    return context;
-  }
-  
 
-  public XhtmlNode makeExceptionXhtml(Exception e, String function) {
-    XhtmlNode xn;
-    xn = new XhtmlNode(NodeType.Element, "div");
-    XhtmlNode p = xn.para();
-    p.b().tx("Exception "+function+": "+e.getMessage());
-    p.addComment(getStackTrace(e));
-    return xn;
-  }
+  private String displaySampledData(ResourceWrapper s) { 
+    CommaSeparatedStringBuilder b = new CommaSeparatedStringBuilder(); 
+    if (s.has("origin")) 
+      b.append(context.formatPhrase(RenderingContext.DATA_REND_ORIGIN, displayQuantity(s.child("origin"))) + " "); 
 
-  private String getStackTrace(Exception e) {
-    StringBuilder b = new StringBuilder();
-    b.append("\r\n");
-    for (StackTraceElement t : e.getStackTrace()) {
-      b.append(t.getClassName()+"."+t.getMethodName()+" ("+t.getFileName()+":"+t.getLineNumber());
-      b.append("\r\n");
-    }
-    return b.toString();
-  }
+    if (s.has("interval")) { 
+      b.append(context.formatPhrase(RenderingContext.DATA_REND_INT, s.primitiveValue("interval")) + " "); 
 
-  protected String versionFromCanonical(String system) {
-    if (system == null) {
-      return null;
-    } else if (system.contains("|")) {
-      return system.substring(0, system.indexOf("|"));
-    } else {
-      return null;
-    }
-  }
+      if (s.has("intervalUnit")) 
+        b.append(s.primitiveValue("intervalUnit")); 
+    } 
 
-  protected String systemFromCanonical(String system) {
-    if (system == null) {
-      return null;
-    } else if (system.contains("|")) {
-      return system.substring(system.indexOf("|")+1);
-    } else {
-      return system;
-    }
-  }
+    if (s.has("factor")) 
+      b.append(context.formatPhrase(RenderingContext.DATA_REND_FACT, s.primitiveValue("factor")) + " "); 
+
+    if (s.has("lowerLimit")) 
+      b.append(context.formatPhrase(RenderingContext.DATA_REND_LOWER, s.primitiveValue("lowerLimit")) + " "); 
+
+    if (s.has("upperLimit")) 
+      b.append(context.formatPhrase(RenderingContext.DATA_REND_UP, s.primitiveValue("upperLimit")) + " "); 
+
+    if (s.has("dimensions")) 
+      b.append(context.formatPhrase(RenderingContext.DATA_REND_DIM, s.primitiveValue("dimensions")) + " "); 
+
+    if (s.has("data")) 
+      b.append(context.formatPhrase(RenderingContext.DATA_REND_DATA, s.primitiveValue("data")) + " "); 
+
+    return b.toString(); 
+  } 
+
+  protected void renderSampledData(RenderingStatus status, XhtmlNode x, ResourceWrapper sampledData) { 
+    x.addText(displaySampledData(sampledData)); 
+  } 
+
+  public RenderingContext getContext() { 
+    return context; 
+  } 
+
+
+  public XhtmlNode makeExceptionXhtml(Exception e, String function) { 
+    XhtmlNode xn; 
+    xn = new XhtmlNode(NodeType.Element, "div"); 
+    XhtmlNode p = xn.para(); 
+    p.b().tx((context.formatPhrase(RenderingContext.DATA_REND_EXCEPTION)) +function+": "+e.getMessage()); 
+    p.addComment(getStackTrace(e)); 
+    return xn; 
+  } 
+
+  private String getStackTrace(Exception e) { 
+    StringBuilder b = new StringBuilder(); 
+    b.append("\r\n"); 
+    for (StackTraceElement t : e.getStackTrace()) { 
+      b.append(t.getClassName()+"."+t.getMethodName()+" ("+t.getFileName()+":"+t.getLineNumber()); 
+      b.append("\r\n"); 
+    } 
+    return b.toString(); 
+  } 
+
+  protected String versionFromCanonical(String system) { 
+    if (system == null) { 
+      return null; 
+    } else if (system.contains("|")) { 
+      return system.substring(0, system.indexOf("|")); 
+    } else { 
+      return null; 
+    } 
+  } 
+
+  protected String systemFromCanonical(String system) { 
+    if (system == null) { 
+      return null; 
+    } else if (system.contains("|")) { 
+      return system.substring(system.indexOf("|")+1); 
+    } else { 
+      return system; 
+    } 
+  } 
 
 
 }

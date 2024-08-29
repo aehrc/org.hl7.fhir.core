@@ -11,8 +11,11 @@ import java.util.Random;
 import java.util.stream.Stream;
 
 import org.apache.commons.lang3.SystemUtils;
+import org.hl7.fhir.utilities.filesystem.CSFile;
+import org.hl7.fhir.utilities.filesystem.ManagedFileAccess;
 import org.hl7.fhir.utilities.settings.FhirSettings;
 import org.junit.jupiter.api.Assertions;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
@@ -59,12 +62,6 @@ class UtilitiesTest {
     assertEquals(Utilities.path("[user]", TEST_TXT), getUserDirectory() + TEST_TXT);
   }
 
-  @Test
-  @DisplayName("Test Utilities.path maps JAVA_HOME correctly")
-  public void testJavaHomeDirPath() throws IOException {
-    assertEquals(Utilities.path("[JAVA_HOME]", TEST_TXT), getJavaHomeDirectory() + TEST_TXT);
-  }
-
   private String getJavaHomeDirectory() {
     String os = SystemUtils.OS_NAME;
     if (os.contains(OSX) || os.contains(MAC)) {
@@ -98,7 +95,7 @@ class UtilitiesTest {
     } else if (os.contains(LINUX)) {
       return LINUX_TEMP_DIR;
     } else if (os.toUpperCase().contains(WINDOWS)) {
-      File tmp = new File(Utilities.C_TEMP_DIR);
+      File tmp = ManagedFileAccess.file(Utilities.C_TEMP_DIR);
       if(tmp.exists()) {
         return Utilities.C_TEMP_DIR + '\\';
       } else {
@@ -447,12 +444,12 @@ class UtilitiesTest {
   }
 
   private void checkFile(String path, String content) throws IOException {
-    Assertions.assertTrue(new CSFile(path).exists());
+    Assertions.assertTrue(ManagedFileAccess.csfile(path).exists());
     Assertions.assertEquals(content, TextFile.fileToString(path));
   }
 
   private void checkDir(String path) throws IOException {
-    Assertions.assertTrue(new CSFile(path).exists());
+    Assertions.assertTrue(ManagedFileAccess.csfile(path).exists());
   }
 
   private void makeFile(String path, String content) throws IOException {
@@ -462,6 +459,25 @@ class UtilitiesTest {
   private void makeDir(String path) throws IOException {
     Utilities.createDirectory(path);
     Utilities.clearDirectory(path);
+  }
+
+  @Test
+  void testSimpleSplit() throws IOException {
+    checkEquals(new String[] {}, Utilities.simpleSplit(null, ","));
+    checkEquals(new String[] {""}, Utilities.simpleSplit("", ","));
+    checkEquals(new String[] {"", ""}, Utilities.simpleSplit(",", ","));
+    checkEquals(new String[] {"A"}, Utilities.simpleSplit("A", ","));
+    checkEquals(new String[] {"A", "B"}, Utilities.simpleSplit("A,B", ","));
+    checkEquals(new String[] {"", "A", "", "B", ""}, Utilities.simpleSplit(",A,,B,", ","));
+    checkEquals(new String[] {"", "ONE", "", "TWO", "", "", "THREE", "", ""}, Utilities.simpleSplit("[stop]ONE[stop][stop]TWO[stop][stop][stop]THREE[stop][stop]", "[stop]"));
+  }
+
+  private void checkEquals(String[] left, String[] right) {
+    for (int i =0; i < Integer.min(left.length, right.length); i++) {
+      Assertions.assertEquals(left[i], right[i], "String["+i+"] differs");
+    }
+    Assertions.assertEquals(left.length, right.length, "String[].length() differs");
+    
   }
 }
 

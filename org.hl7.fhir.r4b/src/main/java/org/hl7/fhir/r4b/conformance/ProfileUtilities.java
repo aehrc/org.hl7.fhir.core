@@ -55,6 +55,11 @@ import org.hl7.fhir.r4b.context.IWorkerContext;
 import org.hl7.fhir.r4b.context.IWorkerContext.ValidationResult;
 import org.hl7.fhir.r4b.elementmodel.ObjectConverter;
 import org.hl7.fhir.r4b.elementmodel.Property;
+import org.hl7.fhir.r4b.fhirpath.ExpressionNode;
+import org.hl7.fhir.r4b.fhirpath.FHIRLexer;
+import org.hl7.fhir.r4b.fhirpath.FHIRPathEngine;
+import org.hl7.fhir.r4b.fhirpath.ExpressionNode.Kind;
+import org.hl7.fhir.r4b.fhirpath.ExpressionNode.Operation;
 import org.hl7.fhir.r4b.formats.IParser;
 import org.hl7.fhir.r4b.model.Base;
 import org.hl7.fhir.r4b.model.BooleanType;
@@ -81,9 +86,6 @@ import org.hl7.fhir.r4b.model.Enumeration;
 import org.hl7.fhir.r4b.model.Enumerations.BindingStrength;
 import org.hl7.fhir.r4b.model.Enumerations.FHIRVersion;
 import org.hl7.fhir.r4b.model.Enumerations.PublicationStatus;
-import org.hl7.fhir.r4b.model.ExpressionNode;
-import org.hl7.fhir.r4b.model.ExpressionNode.Kind;
-import org.hl7.fhir.r4b.model.ExpressionNode.Operation;
 import org.hl7.fhir.r4b.model.Extension;
 import org.hl7.fhir.r4b.model.IdType;
 import org.hl7.fhir.r4b.model.IntegerType;
@@ -107,8 +109,6 @@ import org.hl7.fhir.r4b.renderers.TerminologyRenderer;
 import org.hl7.fhir.r4b.renderers.spreadsheets.SpreadsheetGenerator;
 import org.hl7.fhir.r4b.renderers.utils.RenderingContext;
 import org.hl7.fhir.r4b.terminologies.ValueSetExpander.ValueSetExpansionOutcome;
-import org.hl7.fhir.r4b.utils.FHIRLexer;
-import org.hl7.fhir.r4b.utils.FHIRPathEngine;
 import org.hl7.fhir.r4b.utils.PublicationHacker;
 import org.hl7.fhir.r4b.utils.ToolingExtensions;
 import org.hl7.fhir.r4b.utils.TranslatingUtilities;
@@ -116,10 +116,12 @@ import org.hl7.fhir.r4b.utils.XVerExtensionManager;
 import org.hl7.fhir.r4b.utils.XVerExtensionManager.XVerExtensionStatus;
 import org.hl7.fhir.r4b.utils.formats.CSVWriter;
 import org.hl7.fhir.utilities.CommaSeparatedStringBuilder;
+import org.hl7.fhir.utilities.FhirPublication;
 import org.hl7.fhir.utilities.MarkDownProcessor;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.VersionUtilities;
 import org.hl7.fhir.utilities.i18n.I18nConstants;
+import org.hl7.fhir.utilities.i18n.RenderingI18nContext;
 import org.hl7.fhir.utilities.validation.ValidationMessage;
 import org.hl7.fhir.utilities.validation.ValidationMessage.IssueSeverity;
 import org.hl7.fhir.utilities.validation.ValidationMessage.IssueType;
@@ -341,7 +343,7 @@ public class ProfileUtilities extends TranslatingUtilities {
   private ProfileKnowledgeProvider pkp;
   private boolean igmode;
   private boolean exception;
-  private ValidationOptions terminologyServiceOptions = new ValidationOptions();
+  private ValidationOptions terminologyServiceOptions = new ValidationOptions(FhirPublication.R4B);
   private boolean newSlicingProcessing;
   private String defWebRoot;
   private boolean autoFixSliceNames;
@@ -3873,8 +3875,7 @@ public class ProfileUtilities extends TranslatingUtilities {
   public XhtmlNode generateExtensionTable(String defFile, StructureDefinition ed, String imageFolder,
       boolean inlineGraphics, boolean full, String corePath, String imagePath, Set<String> outputTracker,
       RenderingContext rc) throws IOException, FHIRException {
-    HierarchicalTableGenerator gen = new HierarchicalTableGenerator(imageFolder, inlineGraphics, true);
-    gen.setTranslator(getTranslator());
+    HierarchicalTableGenerator gen = new HierarchicalTableGenerator(new RenderingI18nContext(), imageFolder, inlineGraphics, true);
     TableModel model = gen.initNormalTable(corePath, false, true, ed.getId() + (full ? "f" : "n"), true,
         TableGenerationMode.XHTML);
 
@@ -4442,8 +4443,7 @@ public class ProfileUtilities extends TranslatingUtilities {
       boolean logicalModel, boolean allInvariants, Set<String> outputTracker, boolean active, boolean mustSupport,
       RenderingContext rc) throws IOException, FHIRException {
     assert (diff != snapshot);// check it's ok to get rid of one of these
-    HierarchicalTableGenerator gen = new HierarchicalTableGenerator(imageFolder, inlineGraphics, true);
-    gen.setTranslator(getTranslator());
+    HierarchicalTableGenerator gen = new HierarchicalTableGenerator(new RenderingI18nContext(), imageFolder, inlineGraphics, true);
     TableModel model = gen.initNormalTable(corePath, false, true, profile.getId() + (diff ? "d" : "s"), active,
         active ? TableGenerationMode.XHTML : TableGenerationMode.XML);
     List<ElementDefinition> list = new ArrayList<>();
@@ -4544,8 +4544,7 @@ public class ProfileUtilities extends TranslatingUtilities {
   public XhtmlNode generateGrid(String defFile, StructureDefinition profile, String imageFolder, boolean inlineGraphics,
       String profileBaseFileName, String corePath, String imagePath, Set<String> outputTracker)
       throws IOException, FHIRException {
-    HierarchicalTableGenerator gen = new HierarchicalTableGenerator(imageFolder, inlineGraphics, true);
-    gen.setTranslator(getTranslator());
+    HierarchicalTableGenerator gen = new HierarchicalTableGenerator(new RenderingI18nContext(), imageFolder, inlineGraphics, true);
     TableModel model = gen.initGridTable(corePath, profile.getId());
     List<ElementDefinition> list = profile.getSnapshot().getElement();
     List<StructureDefinition> profiles = new ArrayList<StructureDefinition>();
@@ -7115,8 +7114,7 @@ public class ProfileUtilities extends TranslatingUtilities {
 
   public XhtmlNode generateSpanningTable(StructureDefinition profile, String imageFolder, boolean onlyConstraints,
       String constraintPrefix, Set<String> outputTracker) throws IOException, FHIRException {
-    HierarchicalTableGenerator gen = new HierarchicalTableGenerator(imageFolder, false, true);
-    gen.setTranslator(getTranslator());
+    HierarchicalTableGenerator gen = new HierarchicalTableGenerator(new RenderingI18nContext(), imageFolder, false, true);
     TableModel model = initSpanningTable(gen, "", false, profile.getId());
     Set<String> processed = new HashSet<String>();
     SpanEntry span = buildSpanningTable("(focus)", "", profile, processed, onlyConstraints, constraintPrefix);

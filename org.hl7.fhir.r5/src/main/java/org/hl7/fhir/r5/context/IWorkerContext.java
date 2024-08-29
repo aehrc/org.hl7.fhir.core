@@ -2,10 +2,12 @@ package org.hl7.fhir.r5.context;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
+import java.util.HashSet;
 
 /*
   Copyright (c) 2011+, HL7, Inc.
@@ -47,19 +49,17 @@ import org.fhir.ucum.UcumService;
 import org.hl7.fhir.exceptions.DefinitionException;
 import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.exceptions.TerminologyServiceException;
-import org.hl7.fhir.r5.context.TerminologyCache.CacheToken;
+import org.hl7.fhir.r5.context.IWorkerContext.OIDDefinition;
+import org.hl7.fhir.r5.context.IWorkerContext.OIDDefinitionComparer;
 import org.hl7.fhir.r5.elementmodel.Element;
 import org.hl7.fhir.r5.formats.IParser;
 import org.hl7.fhir.r5.formats.ParserType;
-import org.hl7.fhir.r5.model.Bundle;
 import org.hl7.fhir.r5.model.CanonicalResource;
 import org.hl7.fhir.r5.model.CodeSystem;
-import org.hl7.fhir.r5.model.CodeSystem.ConceptDefinitionComponent;
 import org.hl7.fhir.r5.model.CodeableConcept;
 import org.hl7.fhir.r5.model.Coding;
 import org.hl7.fhir.r5.model.ConceptMap;
 import org.hl7.fhir.r5.model.ElementDefinition.ElementDefinitionBindingComponent;
-import org.hl7.fhir.r5.model.OperationOutcome.OperationOutcomeIssueComponent;
 import org.hl7.fhir.r5.model.NamingSystem;
 import org.hl7.fhir.r5.model.PackageInformation;
 import org.hl7.fhir.r5.model.Parameters;
@@ -72,19 +72,17 @@ import org.hl7.fhir.r5.profilemodel.PEDefinition;
 import org.hl7.fhir.r5.profilemodel.PEBuilder.PEElementPropertiesPolicy;
 import org.hl7.fhir.r5.profilemodel.PEBuilder;
 import org.hl7.fhir.r5.terminologies.expansion.ValueSetExpansionOutcome;
-import org.hl7.fhir.r5.terminologies.utilities.TerminologyServiceErrorClass;
+import org.hl7.fhir.r5.terminologies.utilities.CodingValidationRequest;
+import org.hl7.fhir.r5.terminologies.utilities.ValidationResult;
 import org.hl7.fhir.r5.utils.validation.IResourceValidator;
 import org.hl7.fhir.r5.utils.validation.ValidationContextCarrier;
+import org.hl7.fhir.utilities.CommaSeparatedStringBuilder;
+import org.hl7.fhir.utilities.FhirPublication;
 import org.hl7.fhir.utilities.TimeTracker;
-import org.hl7.fhir.utilities.TranslationServices;
 import org.hl7.fhir.utilities.npm.BasePackageCacheManager;
 import org.hl7.fhir.utilities.npm.NpmPackage;
-import org.hl7.fhir.utilities.npm.NpmPackage.PackageResourceInformation;
-import org.hl7.fhir.utilities.validation.ValidationMessage.IssueSeverity;
 import org.hl7.fhir.utilities.validation.ValidationMessage;
 import org.hl7.fhir.utilities.validation.ValidationOptions;
-
-import com.google.gson.JsonSyntaxException;
 
 import javax.annotation.Nonnull;
 
@@ -111,403 +109,138 @@ import javax.annotation.Nonnull;
 
 public interface IWorkerContext {
 
-  class ValidationResult {
-    private ConceptDefinitionComponent definition;
-    private String preferredDisplay;
-    private String system;
-    private String version;
-    private IssueSeverity severity;
-    private String message;
-    private TerminologyServiceErrorClass errorClass;
-    private String txLink;
-    private String diagnostics;
-    private List<OperationOutcomeIssueComponent> issues = new ArrayList<>();
-    private CodeableConcept codeableConcept;
-    private Set<String> unknownSystems;
-    private boolean inactive;
-    private String status;
-    
+  /**
+   @deprecated This interface only exists to provide backward compatibility for the following two projects:
+   <a href="https://github.com/cqframework/clinical-reasoning">clinical-reasoning</a>
+   <a href="https://github.com/cqframework/clinical_quality_language/">clinical_quality-language</a>
+
+   Due to a circular dependency, they cannot be updated without a release of HAPI, which requires backwards
+   compatibility with core version 6.1.2.2
+   **/
+  @Deprecated(forRemoval = true)
+  public interface ILoggingService extends org.hl7.fhir.r5.context.ILoggingService{
+
+  }
+  public class OIDDefinitionComparer implements Comparator<OIDDefinition> {
+
     @Override
-    public String toString() {
-      return "ValidationResult [definition=" + definition + ", system=" + system + ", severity=" + severity + ", message=" + message + ", errorClass="
-          + errorClass + ", txLink=" + txLink + "]";
-    }
-
-    public ValidationResult(IssueSeverity severity, String message, List<OperationOutcomeIssueComponent> issues) {
-      this.severity = severity;
-      this.message = message;
-      if (issues != null) {
-        this.issues.addAll(issues);
+    public int compare(OIDDefinition o1, OIDDefinition o2) {
+      if (o1.getUrl().equals(o2.getUrl())) {
+        return -o1.getVersion().compareTo(o2.getVersion());        
+      } else {
+        return o1.getUrl().compareTo(o2.getUrl());
       }
     }
+  }
 
-    public ValidationResult(String system, String version, ConceptDefinitionComponent definition, String preferredDisplay) {
-      this.system = system;
-      this.version = version;
-      this.definition = definition;
-      this.preferredDisplay = preferredDisplay;
+  public class OIDDefinition {
+    private String type;
+    private String oid;
+    private String url;
+    private String version;
+    private String packageSrc;
+    protected OIDDefinition(String type, String oid, String url, String version, String packageSrc) {
+      super();
+      this.type = type;
+      this.oid = oid;
+      this.url = url;
+      this.version = version == null ? "" : version;
+      this.packageSrc = packageSrc;
     }
-
-    public ValidationResult(IssueSeverity severity, String message, String system, String version, ConceptDefinitionComponent definition, String preferredDisplay, List<OperationOutcomeIssueComponent>  issues) {
-      this.severity = severity;
-      this.message = message;
-      this.system = system;
-      this.version = version;
-      this.definition = definition;
-      this.preferredDisplay = preferredDisplay;
-      if (issues != null) {
-        this.issues.addAll(issues);
-      }
+    public String getType() {
+      return type;
     }
-
-    public ValidationResult(IssueSeverity severity, String message, TerminologyServiceErrorClass errorClass, List<OperationOutcomeIssueComponent>  issues) {
-      this.severity = severity;
-      this.message = message;
-      this.errorClass = errorClass;
-      if (issues != null) {
-        this.issues.addAll(issues);
-      }
+    public String getOid() {
+      return oid;
     }
-
-    public boolean isOk() {
-      return severity == null || severity == IssueSeverity.INFORMATION || severity == IssueSeverity.WARNING;
+    public String getUrl() {
+      return url;
     }
-
-    public String getSystem() {
-      return system;
-    }
-
     public String getVersion() {
       return version;
     }
-
-    public String getDisplay() {
-      if (preferredDisplay != null) {
-        return preferredDisplay; 
-      } else {
-        return definition == null ? null : definition.getDisplay();
-      }
+    public String getPackageSrc() {
+      return packageSrc;
     }
-
-    public void setDisplay(String display) {
-      this.preferredDisplay = display;
+    public String summary() {
+      return url+(version == null ? "" : "|"+version)+(packageSrc != null ? "("+packageSrc+")" : "");
     }
-
-    public void setSystem(String system) {
-      this.system = system;
-    }
-
-    public void setVersion(String version) {
-      this.version = version;
-    }
-
-    public String getCode() {
-      return definition == null ? null : definition.getCode();
-    }
-
-    public String getDefinition() {
-      return definition == null ? null : definition.getDefinition();
-    }
-
-    public void setDefinition(ConceptDefinitionComponent definition) {
-      this.definition = definition;
-    }
-
-    public ConceptDefinitionComponent asConceptDefinition() {
-      return definition;
-    }
-
-    public IssueSeverity getSeverity() {
-      return severity;
-    }
-
-    public String getMessage() {
-      return message;
-    }
-
-    public boolean IsNoService() {
-      return errorClass == TerminologyServiceErrorClass.NOSERVICE;
-    }
-
-    public TerminologyServiceErrorClass getErrorClass() {
-      return errorClass;
-    }
-
-    public ValidationResult setSeverity(IssueSeverity severity) {
-      this.severity = severity;
-      return this;
-    }
-
-    public ValidationResult setMessage(String message) {
-      this.message = message;
-      return this;
+    public boolean matches(OIDDefinition t) {
+      return url.equals(t.url) && version.equals(t.version);
     }
     
-    public ValidationResult addToMessage(String message) {
-      this.message = this.message == null ? message : this.message +"; "+ message; 
-      return this;
-    }
-    
-    public ValidationResult setErrorClass(TerminologyServiceErrorClass errorClass) {
-      this.errorClass = errorClass;
-      return this;
-    }
+  }
 
-    public String getTxLink() {
-      return txLink;
-    }
+  public class OIDSummary {
+    private List<OIDDefinition> definitions = new ArrayList<>();
+    private List<String> urls = new ArrayList<>();
 
-    public ValidationResult setTxLink(String txLink) {
-      this.txLink = txLink;
-      return this;
-    }
-
-    public boolean hasMessage() {
-      return message != null;
-    }
-
-    public String getDiagnostics() {
-      return diagnostics;
-    }
-
-    public void setDiagnostics(String diagnostics) {
-      this.diagnostics = diagnostics;
-    }
-
-    public Coding asCoding() {
-      if (isOk() && definition != null && definition.getCode() != null) {
-        return new Coding(system, definition.getCode(), definition.getDisplay());
-      } else {
-        return null;
-      }
-    }
-
-    public List<OperationOutcomeIssueComponent> getIssues() {
-      return issues;
-    }
-
-    public ValidationResult addCodeableConcept(CodeableConcept vcc) {
-      if (!vcc.isEmpty()) {
-        codeableConcept = vcc;
-      }
-      return this;
-    }
-
-    public CodeableConcept getCodeableConcept() {
-      return codeableConcept;
-    }
-
-    public Set<String> getUnknownSystems() {
-      return unknownSystems;
-    }
-
-    public ValidationResult setUnknownSystems(Set<String> unknownSystems) {
-      this.unknownSystems = unknownSystems;
-      return this;
-    }
-
-    public String unknownSystems() {
-      if (unknownSystems == null) {
-        return null;
-      }
-      if (unknownSystems.size() == 1) {
-        return unknownSystems.iterator().next();        
-      } else {
-        return String.join(",", unknownSystems);
-      }
-    }
-
-    public void setIssues(List<OperationOutcomeIssueComponent> issues) {
-      if (this.issues != null) {
-        issues.addAll(this.issues);
-      }
-      this.issues = issues;
-      
-    }
-
-    public void trimPath(String prefix) {
-      if (issues != null) {
-        for (OperationOutcomeIssueComponent iss : issues) {
-          for (int i = iss.getLocation().size() -1; i >= 0; i--) {
-            var s = iss.getLocation().get(i).primitiveValue();
-            if (prefix.equals(s)) {
-              iss.getLocation().remove(i);
-            } else if (s.startsWith(prefix+".")) {
-              iss.getLocation().get(i).setValueAsString(s.substring(prefix.length()+1));                
-            }            
-          }
+    public void addOID(OIDDefinition d) {
+      for (OIDDefinition t : definitions) {
+        if (d.matches(t)) {
+          return;
         }
-      }      
-      
-    }
-
-    public boolean isInactive() {
-      return inactive;
-    }
-
-    public String getStatus() {
-      return status;
-    }
-
-    public ValidationResult setStatus(boolean inactive, String status) {
-      this.inactive = inactive;
-      if (!"inactive".equals(status)) {
-        this.status = status;
       }
-      return this;
+      definitions.add(d);
+      if (!urls.contains(d.getUrl())) {
+        urls.add(d.getUrl());
+      }
     }
-
-  }
-
-  public class CodingValidationRequest {
-    private Coding coding;
-    private ValidationResult result;
-    private CacheToken cacheToken;
-    private String vs;
-
-    public CodingValidationRequest(Coding coding) {
-      super();
-      this.coding = coding;
-    }
-
-    public CodingValidationRequest(Coding coding, String vs) {
-      super();
-      this.coding = coding;
-      this.vs = vs;
-    }
-
-    public String getVs() {
-      return vs;
-    }
-
-    public ValidationResult getResult() {
-      return result;
-    }
-
-    public void setResult(ValidationResult result) {
-      this.result = result;
-    }
-
-    public Coding getCoding() {
-      return coding;
-    }
-
-    public boolean hasResult() {
-      return result != null;
-    }
-
-    /**
-     * internal logic; external users of batch validation should ignore this property
-     * 
-     * @return
-     */
-    public CacheToken getCacheToken() {
-      return cacheToken;
-    }
-
-    /**
-     * internal logic; external users of batch validation should ignore this property
-     * 
-     * @param cacheToken
-     */
-    public void setCacheToken(CacheToken cacheToken) {
-      this.cacheToken = cacheToken;
-    }
-
-
-  }
-
-
-  public interface IContextResourceLoader {
-    /** 
-     * @return List of the resource types that should be loaded
-     */
-    List<String> getTypes();
-
-    /**
-     * Request to actually load the resources and do whatever is required
-     *  
-     * @param stream
-     * @param isJson
-     * @return A bundle because some single resources become multiple resources after loading
-     * @throws FHIRException
-     * @throws IOException
-     */
-    Bundle loadBundle(InputStream stream, boolean isJson) throws FHIRException, IOException;
-
-    /**
-     * Load a single resources (lazy load)
-     * 
-     * @param stream
-     * @param isJson
-     * @return
-     * @throws FHIRException - throw this if you a single resource can't be returned - can't lazy load in this circumstance   
-     * @throws IOException
-     */
-    Resource loadResource(InputStream stream, boolean isJson) throws FHIRException, IOException;
-
-    /** 
-     * get the path for references to this resource.
-     * @param resource
-     * @return null if not tracking paths
-     */
-    String getResourcePath(Resource resource);
-
-    /**
-     * called when a new package is being loaded
-     * 
-     * this is called by loadPackageAndDependencies when a new package is loaded
-     * @param npm
-     * @return
-     * @throws IOException 
-     * @throws JsonSyntaxException 
-     */
-    IContextResourceLoader getNewLoader(NpmPackage npm) throws JsonSyntaxException, IOException;
-
-    /**
-     * called when processing R2 for implicit code systems in ValueSets 
-     * 
-     * @return
-     */
-    List<CodeSystem> getCodeSystems();  
     
-    /**
-     * if this is true, then the loader will patch canonical URLs and cross-links 
-     * to add /X.X/ into the URL so that different versions can be loaded safely 
-     * 
-     * default is false
-     */
-    void setPatchUrls(boolean value);
+    public void addOIDs(Collection<OIDDefinition> collection) {
+      for (OIDDefinition t : collection) {
+        addOID(t);
+      }
+    }
+    
+    public List<OIDDefinition> getDefinitions() {
+      return definitions;
+    }
 
-    /**
-     * patch the URL if necessary
-     * 
-     * @param url
-     * @return
-     */
-    String patchUrl(String url, String resourceType);
-    
-    /** 
-     * set this to false (default is true) if you don't want profiles loaded
-     * @param value
-     * @return
-     */
-    IContextResourceLoader setLoadProfiles(boolean value);
-    
-    /**
-     * Called during the loading process - the loader can decide which resources to load. 
-     * At this point, only the .index.json is being read 
-     *  
-     * @param pi
-     * @param pri
-     * @return
-     */
-    boolean wantLoad(NpmPackage pi, PackageResourceInformation pri);
+    public void sort() {
+      Collections.sort(definitions, new OIDDefinitionComparer());
+      Collections.sort(urls);
+    }
+    public String describe() {
+      CommaSeparatedStringBuilder b = new CommaSeparatedStringBuilder();
+      for (OIDDefinition d : definitions) {
+        b.append(d.summary());
+      }
+      return b.toString();
+    }
+
+    public String chooseBestUrl() {
+      for (OIDDefinition d : definitions) {
+        if (d.getPackageSrc() == null) {
+          return d.getUrl();
+        }
+      }
+      for (OIDDefinition d : definitions) {
+        if (d.getUrl().startsWith("http://hl7.org/fhir/")) {
+          return d.getUrl();
+        }
+      }
+      for (OIDDefinition d : definitions) {
+        if (!d.getUrl().contains("vsac")) {
+          return d.getUrl();
+        }
+      }
+      return null;
+    }
+
+    public int urlCount() {
+      return urls.size();
+    }
+
+    public String getUrl() {
+      return urls.iterator().next();
+    }
   }
-
   /**
-   * Get the version of the definitions loaded in context
+   * Get the version of the base definitions loaded in context
    * This *does not* have to be 5.0 (R5) - the context can load other versions
+   * 
+   * Note that more than one version might be loaded at once, but one version is always the default / master
    * 
    * @return
    */
@@ -565,6 +298,8 @@ public interface IWorkerContext {
   public <T extends Resource> T fetchResourceWithException(Class<T> class_, String uri) throws FHIRException;
   public <T extends Resource> T fetchResourceWithException(Class<T> class_, String uri, Resource sourceOfReference) throws FHIRException;
   public <T extends Resource> T fetchResource(Class<T> class_, String uri, String version);
+  public <T extends Resource> T fetchResource(Class<T> class_, String uri, FhirPublication fhirVersion);
+  public <T extends Resource> T fetchResource(Class<T> class_, String uri, String version, FhirPublication fhirVersion);
 
   /** has the same functionality as fetchResource, but passes in information about the source of the 
    * reference (this may affect resolution of version)
@@ -586,8 +321,18 @@ public interface IWorkerContext {
    * @param canonicalForSource
    * @return
    */
+  public <T extends Resource> List<T> fetchResourcesByType(Class<T> class_, FhirPublication fhirVersion);
   public <T extends Resource> List<T> fetchResourcesByType(Class<T> class_);
 
+
+  /**
+   * Fetch all the resources for the given URL - all matching versions
+   * 
+   * @param url
+   * @return
+   */
+  public <T extends Resource> List<T> fetchResourcesByUrl(Class<T> class_, String url);
+  
   /**
    * Variation of fetchResource when you have a string type, and don't need the right class
    * 
@@ -603,6 +348,7 @@ public interface IWorkerContext {
    * @return
    */
   public Resource fetchResourceById(String type, String uri);
+  public Resource fetchResourceById(String type, String uri, FhirPublication fhirVersion);
 
   /**
    * find whether a resource is available. 
@@ -615,6 +361,8 @@ public interface IWorkerContext {
    * @return
    */
   public <T extends Resource> boolean hasResource(Class<T> class_, String uri);
+  public <T extends Resource> boolean hasResource(Class<T> class_, String uri, Resource sourceOfReference);
+  public <T extends Resource> boolean hasResource(Class<T> class_, String uri, FhirPublication fhirVersion);
 
   /**
    * cache a resource for later retrieval using fetchResource.
@@ -657,10 +405,12 @@ public interface IWorkerContext {
    * @return a list of the resource names defined for this version
    */
   public List<String> getResourceNames();
+  public List<String> getResourceNames(FhirPublication fhirVersion);
   /**
    * @return a set of the resource names defined for this version
    */
   public Set<String> getResourceNamesAsSet();
+  public Set<String> getResourceNamesAsSet(FhirPublication fhirVersion);
 
   // -- Terminology services ------------------------------------------------------
 
@@ -676,7 +426,7 @@ public interface IWorkerContext {
    * 
    * Note that the Validation Options override these when they are specified on validateCode
    */
-  public void setExpansionProfile(Parameters expParameters);
+  public void setExpansionParameters(Parameters expParameters);
 
   // these are the terminology services used internally by the tools
   /**
@@ -691,6 +441,8 @@ public interface IWorkerContext {
    */
   public CodeSystem fetchCodeSystem(String system);
   public CodeSystem fetchCodeSystem(String system, String version);
+  public CodeSystem fetchCodeSystem(String system, FhirPublication fhirVersion);
+  public CodeSystem fetchCodeSystem(String system, String version, FhirPublication fhirVersion);
 
   /**
    * Like fetchCodeSystem, except that the context will find any CodeSysetm supplements and merge them into the
@@ -699,6 +451,8 @@ public interface IWorkerContext {
    */
   public CodeSystem fetchSupplementedCodeSystem(String system);
   public CodeSystem fetchSupplementedCodeSystem(String system, String version);
+  public CodeSystem fetchSupplementedCodeSystem(String system, FhirPublication fhirVersion);
+  public CodeSystem fetchSupplementedCodeSystem(String system, String version, FhirPublication fhirVersion);
 
   /**
    * True if the underlying terminology service provider will do 
@@ -716,6 +470,7 @@ public interface IWorkerContext {
    * @throws Exception 
    */
   public boolean supportsSystem(String system) throws TerminologyServiceException;
+  public boolean supportsSystem(String system, FhirPublication fhirVersion) throws TerminologyServiceException;
 
   /**
    * ValueSet Expansion - see $expand
@@ -766,6 +521,8 @@ public interface IWorkerContext {
 
   /**
    * Access to the contexts internationalised error messages
+   * 
+   * For rendering internationalization, see RenderingContext
    *  
    * @param theMessage
    * @param theMessageArguments
@@ -884,23 +641,9 @@ public interface IWorkerContext {
 
   // todo: figure these out
   public Map<String, NamingSystem> getNSUrlMap();
-  public TranslationServices translator();
 
-  public interface ILoggingService {
-    public enum LogCategory {
-      INIT, 
-      PROGRESS,
-      TX, 
-      CONTEXT, 
-      GENERATE,
-      HTML 
-    }
-    public void logMessage(String message); // status messages, always display
-    public void logDebugMessage(LogCategory category, String message); // verbose; only when debugging 
-    public boolean isDebugLogging(); // whether to log debug information
-  }
-  public void setLogger(@Nonnull ILoggingService logger);
-  public ILoggingService getLogger();
+  public void setLogger(@Nonnull org.hl7.fhir.r5.context.ILoggingService logger);
+  public org.hl7.fhir.r5.context.ILoggingService getLogger();
 
   public boolean isNoTerminologyServer();
   public Set<String> getCodeSystemsUsed();
@@ -918,6 +661,7 @@ public interface IWorkerContext {
    * @return
    */
   public StructureDefinition fetchTypeDefinition(String typeName);
+  public StructureDefinition fetchTypeDefinition(String typeName, FhirPublication fhirVersion);
 
   /**
    * This finds all the structure definitions that have the given typeName
@@ -926,8 +670,22 @@ public interface IWorkerContext {
    * @return
    */
   public List<StructureDefinition> fetchTypeDefinitions(String n);
+  public List<StructureDefinition> fetchTypeDefinitions(String n, FhirPublication fhirVersion);
 
+  /**
+   * return whether type is primitive type. This is called a lot, and needs a high performance implementation 
+   * @param type
+   * @return
+   */
+  public boolean isPrimitiveType(String type);
 
+  /**
+   * return whether type is data type. This is called a lot, and needs a high performance implementation 
+   * @param type
+   * @return
+   */
+  public boolean isDataType(String type);
+  
   /**
    * Returns a set of keys that can be used to get binaries from this context.
    * The binaries come from the loaded packages (mostly the pubpack)
@@ -1009,4 +767,35 @@ public interface IWorkerContext {
   
   public boolean isForPublication();
   public void setForPublication(boolean value);
+
+  /**
+   * 
+   * @param oid
+   * @param resourceType - null to search on all resource types
+   * @return
+   */
+  public OIDSummary urlsForOid(String oid, String resourceType);
+
+  /**
+   * this first does a fetch resource, and if nothing is found, looks in the 
+   * terminology eco-system for a matching definition for the resource 
+   * 
+   * usually used (and so far only tested with) ValueSet.class
+   * 
+   * @param value
+   * @return
+   */
+  public <T extends Resource> T findTxResource(Class<T> class_, String canonical, Resource sourceOfReference);
+  public <T extends Resource> T findTxResource(Class<T> class_, String canonical);
+  public <T extends Resource> T findTxResource(Class<T> class_, String canonical, String version);
+
+  /**
+   * ask the terminology system whether parent subsumes child. 
+   * 
+   * @return true if it does, false if it doesn't, and null if it's not know whether it does
+   */
+  public Boolean subsumes(ValidationOptions options, Coding parent, Coding child);
+
+  public boolean isServerSideSystem(String url);
+
 }

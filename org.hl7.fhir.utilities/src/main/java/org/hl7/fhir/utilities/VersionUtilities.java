@@ -1,11 +1,13 @@
 package org.hl7.fhir.utilities;
 
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.StringJoiner;
 
 import org.apache.commons.lang3.StringUtils;
 import org.hl7.fhir.exceptions.FHIRException;
+import org.hl7.fhir.utilities.VersionUtilities.SemVer;
 
 /*
   Copyright (c) 2011+, HL7, Inc.
@@ -39,6 +41,71 @@ import org.hl7.fhir.exceptions.FHIRException;
 
 public class VersionUtilities {
 
+
+  public static class SemVerSorter implements Comparator<String> {
+
+    @Override
+    public int compare(String s1, String s2) {
+      return compareVersions(s1, s2);
+    }
+
+  }
+
+  public static class SemVer {
+    private String major;
+    private String minor;
+    private String patch;
+    private String label;
+
+    public SemVer(String ver) {
+      String[] p = ver.split("\\.");
+      if (p.length > 0) {
+        major = p[0];
+      }
+      if (p.length > 1) {
+        minor = p[1];
+      }
+      if (p.length > 2) {
+        patch = p[2];
+        if (patch.contains("-")) {
+          label = patch.substring(patch.indexOf("-")+1);
+          patch = patch.substring(0, patch.indexOf("-"));
+        }
+      }
+    }
+
+    private int compareString(String s1, String s2) {
+      if (s1 == null) {
+        return s2 == null ? 0 : 1;
+      } else {
+        return s1.compareTo(s2);
+      }
+    }
+
+
+    private int compareInteger(String s1, String s2) {
+      if (s1 == null) {
+        return s2 == null ? 0 : 1;
+      } else {
+        return Integer.compare(Integer.parseInt(s1), Integer.parseInt(s2));
+      }
+    }
+    
+    public int compareTo(SemVer sv2) {
+      int c = compareInteger(major, sv2.major);
+      if (c == 0) {
+        c = compareInteger(minor, sv2.minor);
+      }
+      if (c == 0) {
+        c = compareInteger(patch, sv2.patch);
+      }
+      if (c == 0) {
+        c = compareString(label, sv2.label);
+      }
+      return c;
+    }
+
+  }
 
   public static final String[] SUPPORTED_MAJOR_VERSIONS = {"1.0", "1.4", "3.0", "4.0", "5.0", "6.0"};
   public static final String[] SUPPORTED_VERSIONS = {"1.0.2", "1.4.0", "3.0.2", "4.0.1", "4.1.0", "4.3.0", "5.0.0", "6.0.0"};
@@ -217,8 +284,15 @@ public class VersionUtilities {
   }
 
   public static String getMajMin(String version) {
-    if (version == null)
+    if (version == null) {
       return null;
+    }
+    if (version.startsWith("http://hl7.org/fhir/")) {
+      version = version.substring(20);
+      if (version.contains("/")) {
+        version = version.substring(0, version.indexOf("/"));
+      }
+    }
     
     if (Utilities.charCount(version, '.') == 1) {
       String[] p = version.split("\\.");
@@ -226,8 +300,8 @@ public class VersionUtilities {
     } else if (Utilities.charCount(version, '.') == 2) {
       String[] p = version.split("\\.");
       return p[0]+"."+p[1];
-    } else if (Utilities.existsInList(version, "R2", "R2B", "R3", "R4", "R4B", "R5", "R6")) {
-      switch (version) {
+    } else if (Utilities.existsInList(version.toUpperCase(), "R2", "R2B", "R3", "R4", "R4B", "R5", "R6")) {
+      switch (version.toUpperCase()) {
       case "R2": return "1.0";
       case "R2B": return "1.4";
       case "R3": return "3.0";
@@ -251,14 +325,10 @@ public class VersionUtilities {
   }
 
   public static boolean isSemVer(String version) {
-    if (Utilities.charCount(version, '.') != 2) {
+    if (Utilities.noString(version)) {
       return false;
     }
-    String[] p = version.split("\\.");
-    if (p[2].contains("-")) {
-      p[2] = p[2].substring(0, p[2].indexOf("-"));
-    }
-    return Utilities.isInteger(p[0]) && Utilities.isInteger(p[1]) && Utilities.isInteger(p[2]);
+    return version.matches("^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-\\+]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-\\+][0-9a-zA-Z-\\+]*))*))?$");
   }
 
   /** 
@@ -334,7 +404,8 @@ public class VersionUtilities {
       if (pc!=null) {
         if (pt.contains("-") && !pc.contains("-")) {
           pt = pt.substring(0, pt.indexOf("-"));
-          return pt.compareTo(pc) >= 0;
+          int res = pc.compareTo(pt);
+          return res >= 0;
         } else {
           return compareVersionPart(pt, pc);          
         }
@@ -410,6 +481,17 @@ public class VersionUtilities {
   }
 
 
+  /** same as getCanonicalResourceNames but add R5 supported types that are canonical too */
+  public static Set<String> getExtendedCanonicalResourceNames(String version) {
+    Set<String> res = getCanonicalResourceNames(version);
+    if (isR4Ver(version)) {
+      res.add("ActorDefinition");
+      res.add("Requirements");
+      res.add("SubscriptionTopic");
+      res.add("TestPlan");
+    }
+    return res;
+  }
   public static Set<String> getCanonicalResourceNames(String version) {
 
     Set<String> res = new HashSet<String>();
@@ -608,8 +690,9 @@ public class VersionUtilities {
     }
     
     switch (getMajMin(v)) {
-    case "1.0" : return "http://hl7.org/fhir/DSTU1";
-    case "1.4" : return "http://hl7.org/fhir/DSTU2";
+    case "0.0" : return "http://hl7.org/fhir/DSTU1";
+    case "1.0" : return "http://hl7.org/fhir/DSTU2";
+    case "1.4" : return "http://hl7.org/fhir/2016May";
     case "3.0" : return "http://hl7.org/fhir/STU3";
     case "4.0" : return "http://hl7.org/fhir/R4";
     case "4.3" : return "http://hl7.org/fhir/R4B";
@@ -621,7 +704,11 @@ public class VersionUtilities {
   }
 
   public static String getNameForVersion(String v) {
-    switch (getMajMin(v)) {
+    String mm = getMajMin(v);
+    if (mm == null) {
+      throw new Error("Unable to determine version for '"+v+"'");
+    }
+    switch (mm) {
     case "1.0" : return "R2";
     case "1.4" : return "R2B";
     case "3.0" : return "R3";
@@ -640,6 +727,28 @@ public class VersionUtilities {
 
   public static boolean isR6Plus(String version) {
     return version != null && version.startsWith("6.");
+  }
+
+  public static int compareVersions(String ver1, String ver2) {
+    if (ver1 == null) {
+      return ver2 == null ? 0 : 1;
+    } else if (isSemVer(ver1) && isSemVer(ver2)) {
+      SemVer sv1 = new SemVer(ver1);
+      SemVer sv2 = new SemVer(ver2);
+      return sv1.compareTo(sv2);
+    } else {
+      return ver1.compareTo(ver2);
+    }
+  }
+
+  public static boolean includedInRange(String startVer, String stopVer, String ver) {
+    if (ver.equals(startVer)) {
+      return true;
+    }
+    if (ver.equals(stopVer)) {
+      return true;
+    }
+    return startVer.compareTo(ver) < 0 && stopVer.compareTo(ver) > 0;
   }
 
 

@@ -1,12 +1,13 @@
 package org.hl7.fhir.r5.context;
 
 import static org.junit.jupiter.api.Assertions.*;
+import org.hl7.fhir.r5.terminologies.client.TerminologyClientR5.TerminologyClientR5Factory;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.*;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -21,10 +22,14 @@ import org.hl7.fhir.r5.model.Parameters;
 import org.hl7.fhir.r5.model.TerminologyCapabilities;
 import org.hl7.fhir.r5.model.ValueSet;
 import org.hl7.fhir.r5.terminologies.client.ITerminologyClient;
+import org.hl7.fhir.r5.terminologies.client.TerminologyClientContext;
 import org.hl7.fhir.r5.terminologies.expansion.ValueSetExpander;
 import org.hl7.fhir.r5.terminologies.expansion.ValueSetExpansionOutcome;
+import org.hl7.fhir.r5.terminologies.utilities.TerminologyCache;
+import org.hl7.fhir.r5.terminologies.utilities.ValidationResult;
 import org.hl7.fhir.r5.terminologies.validation.ValueSetValidator;
 import org.hl7.fhir.r5.utils.validation.ValidationContextCarrier;
+import org.hl7.fhir.utilities.FhirPublication;
 import org.hl7.fhir.utilities.ToolingClientLogger;
 import org.hl7.fhir.utilities.validation.ValidationOptions;
 import org.junit.jupiter.api.Assertions;
@@ -60,7 +65,7 @@ public class SimpleWorkerContextTests {
   TerminologyCache.CacheToken cacheToken;
 
   @Mock
-  IWorkerContext.ValidationResult expectedValidationResult;
+  ValidationResult expectedValidationResult;
 
   @Mock
   ValueSetExpansionOutcome expectedExpansionResult;
@@ -88,16 +93,12 @@ public class SimpleWorkerContextTests {
 
   @BeforeEach
   public void beforeEach() {
-    context.txCache = terminologyCache;
-    context.expParameters = expParameters;
-    context.tcc.setClient(terminologyClient);
-    context.txLog = txLog;
-  }
 
-  private final static Map<String, String> params = new HashMap<>();
-  static {
-    params.put("_limit", Integer.toString(1000));
-    params.put("_incomplete", "true");
+    Mockito.doReturn(DUMMY_URL).when(terminologyClient).getAddress();
+    context.initTxCache(terminologyCache);
+    context.expParameters = expParameters;
+    context.terminologyClientManager.setMasterClient(terminologyClient, false);
+    context.txLog = txLog;
   }
 
   private final static Parameters pInWithDependentResources = new Parameters();
@@ -122,6 +123,16 @@ public class SimpleWorkerContextTests {
     }
   }
 
+  public class CodingMatcher implements ArgumentMatcher<Coding> {
+    final private Coding left;
+
+    CodingMatcher(Coding left) { this.left = left; }
+
+    public boolean matches(Coding right) {
+      return left.equalsShallow(right);
+    }
+  }
+
   public class ParametersMatcher implements ArgumentMatcher<Parameters> {
     final private Parameters left;
 
@@ -135,9 +146,23 @@ public class SimpleWorkerContextTests {
     }
   }
 
+  public class TerminologyClientContextMatcher implements ArgumentMatcher<TerminologyClientContext> {
+
+    final private TerminologyClientContext left;
+
+    TerminologyClientContextMatcher(TerminologyClientContext left) {
+      this.left = left;
+    }
+
+    @Override
+    public boolean matches(TerminologyClientContext argument) {
+      return left.getAddress().equals(argument.getAddress());
+    }
+  }
+
   @Test
   public void testValidateCodingWithCache() throws IOException {
-    ValidationOptions validationOptions = new ValidationOptions().withGuessSystem().withVersionFlexible(false);
+    ValidationOptions validationOptions = new ValidationOptions(FhirPublication.R5).withGuessSystem().withVersionFlexible(false);
     ValueSet valueSet = new ValueSet();
     Coding coding = new Coding();
 
@@ -146,7 +171,7 @@ public class SimpleWorkerContextTests {
 
     ValidationContextCarrier ctxt = mock(ValidationContextCarrier.class);
 
-    IWorkerContext.ValidationResult actualValidationResult = context.validateCode(validationOptions, coding, valueSet, ctxt);
+    ValidationResult actualValidationResult = context.validateCode(validationOptions, coding, valueSet, ctxt);
 
     assertEquals(expectedValidationResult, actualValidationResult);
 
@@ -157,7 +182,7 @@ public class SimpleWorkerContextTests {
 
   @Test
   public void testValidateCodingWithValueSetChecker() throws IOException {
-    ValidationOptions validationOptions = new ValidationOptions().withGuessSystem().withVersionFlexible(false);
+    ValidationOptions validationOptions = new ValidationOptions(FhirPublication.R5).withGuessSystem().withVersionFlexible(false);
     ValueSet valueSet = new ValueSet();
     Coding coding = new Coding();
 
@@ -168,11 +193,11 @@ public class SimpleWorkerContextTests {
 
     ValidationContextCarrier ctxt = mock(ValidationContextCarrier.class);
 
-    IWorkerContext.ValidationResult actualValidationResult = context.validateCode(validationOptions, coding, valueSet, ctxt);
+    ValidationResult actualValidationResult = context.validateCode(validationOptions, coding, valueSet, ctxt);
 
     assertEquals(expectedValidationResult, actualValidationResult);
 
-    Mockito.verify(valueSetCheckerSimple).validateCode("Coding", coding);
+    Mockito.verify(valueSetCheckerSimple).validateCode(eq("Coding"), argThat(new CodingMatcher(coding)));
     Mockito.verify(terminologyCache).getValidation(cacheToken);
     Mockito.verify(terminologyCache).cacheValidation(cacheToken, expectedValidationResult,false);
   }
@@ -180,17 +205,20 @@ public class SimpleWorkerContextTests {
 
   @Test
   public void testValidateCodingWithServer() throws IOException {
-    ValidationOptions validationOptions = new ValidationOptions().withGuessSystem().withVersionFlexible(false).withNoClient();
+    ValidationOptions validationOptions = new ValidationOptions(FhirPublication.R5).withGuessSystem().withVersionFlexible(false).withNoClient();
     ValueSet valueSet = new ValueSet();
     Coding coding = new Coding();
 
     Mockito.doReturn(cacheToken).when(terminologyCache).generateValidationToken(validationOptions, coding, valueSet, expParameters);
     Mockito.doReturn(pIn).when(context).constructParameters(validationOptions, coding);
-    Mockito.doReturn(expectedValidationResult).when(context).validateOnServer(valueSet, pIn, validationOptions);
+
+    TerminologyClientContext terminologyClientContext = context.getTxClientManager().getMaster();
+
+    Mockito.doReturn(expectedValidationResult).when(context).validateOnServer(terminologyClientContext, valueSet, pIn, validationOptions);
 
     ValidationContextCarrier ctxt = mock(ValidationContextCarrier.class);
 
-    IWorkerContext.ValidationResult actualValidationResult = context.validateCode(validationOptions, coding, valueSet, ctxt);
+    ValidationResult actualValidationResult = context.validateCode(validationOptions, coding, valueSet, ctxt);
 
     assertEquals(expectedValidationResult, actualValidationResult);
 
@@ -207,7 +235,7 @@ public class SimpleWorkerContextTests {
     Mockito.doReturn(cacheToken).when(terminologyCache).generateValidationToken(CacheTestUtils.validationOptions, codeableConcept, valueSet, expParameters);
     Mockito.doReturn(expectedValidationResult).when(terminologyCache).getValidation(cacheToken);
 
-    IWorkerContext.ValidationResult actualValidationResult = context.validateCode(CacheTestUtils.validationOptions, codeableConcept, valueSet);
+    ValidationResult actualValidationResult = context.validateCode(CacheTestUtils.validationOptions, codeableConcept, valueSet);
     assertEquals(expectedValidationResult, actualValidationResult);
 
     Mockito.verify(valueSetCheckerSimple, times(0)).validateCode("CodeableConcept", codeableConcept);
@@ -225,12 +253,12 @@ public class SimpleWorkerContextTests {
 
     Mockito.doReturn(cacheToken).when(terminologyCache).generateValidationToken(CacheTestUtils.validationOptions, codeableConcept, valueSet, expParameters);
 
-    IWorkerContext.ValidationResult validationResultB = context.validateCode(CacheTestUtils.validationOptions, codeableConcept, valueSet);
+    ValidationResult validationResultB = context.validateCode(CacheTestUtils.validationOptions, codeableConcept, valueSet);
     assertEquals(expectedValidationResult, validationResultB);
 
     Mockito.verify(valueSetCheckerSimple).validateCode("CodeableConcept", codeableConcept);
     Mockito.verify(terminologyCache).cacheValidation(cacheToken, expectedValidationResult, false);
-    Mockito.verify(context, times(0)).validateOnServer(any(), any(), any());
+    Mockito.verify(context, times(0)).validateOnServer(any(), any(), any(), any());
   }
 
 
@@ -243,17 +271,19 @@ public class SimpleWorkerContextTests {
     ValidationOptions validationOptions = CacheTestUtils.validationOptions.withNoClient();
     Mockito.doReturn(pIn).when(context).constructParameters(validationOptions, codeableConcept);
 
-    Mockito.doReturn(expectedValidationResult).when(context).validateOnServer(valueSet, pIn, validationOptions);
+    TerminologyClientContext terminologyClientContext = context.getTxClientManager().getMaster();
+
+    Mockito.doReturn(expectedValidationResult).when(context).validateOnServer(terminologyClientContext, valueSet, pIn, validationOptions);
 
     Mockito.doReturn(cacheToken).when(terminologyCache).generateValidationToken(validationOptions, codeableConcept, valueSet, expParameters);
 
-    IWorkerContext.ValidationResult validationResultB = context.validateCode(validationOptions, codeableConcept, valueSet);
+    ValidationResult validationResultB = context.validateCode(validationOptions, codeableConcept, valueSet);
 
     assertEquals(expectedValidationResult, validationResultB);
 
     Mockito.verify(valueSetCheckerSimple, times(0)).validateCode("CodeableConcept", codeableConcept);
     Mockito.verify(terminologyCache).cacheValidation(cacheToken, expectedValidationResult, true);
-    Mockito.verify(context).validateOnServer(valueSet, pIn, validationOptions);
+    Mockito.verify(context).validateOnServer(terminologyClientContext, valueSet, pIn, validationOptions);
   }
 
   @Test
@@ -276,7 +306,7 @@ public class SimpleWorkerContextTests {
 
     Mockito.verify(terminologyCache).getExpansion(cacheToken);
     Mockito.verify(terminologyCache, times(0)).cacheExpansion(any(), any(), anyBoolean());
-    Mockito.verify(terminologyClient, times(0)).expandValueset(any(), any(), any());
+    Mockito.verify(terminologyClient, times(0)).expandValueset(any(), any());
   }
 
   @Test
@@ -292,17 +322,20 @@ public class SimpleWorkerContextTests {
 
     Mockito.doReturn(cacheToken).when(terminologyCache).generateExpandToken(argThat(new ValueSetMatcher(vs)),eq(true));
 
-    Mockito.doReturn(expParameters).when(context).constructParameters(argThat(new ValueSetMatcher(vs)), eq(true));
+    TerminologyClientContext terminologyClientContext = context.getTxClientManager().getMaster();
+
+
+    Mockito.doReturn(expParameters).when(context).constructParameters(argThat(new TerminologyClientContextMatcher(terminologyClientContext)),argThat(new ValueSetMatcher(vs)), eq(true));
 
     ValueSet expectedValueSet = new ValueSet();
 
 
     Mockito.doReturn(expectedValueSet).when(terminologyClient).expandValueset(argThat(new ValueSetMatcher(vs)),
-      argThat(new ParametersMatcher(pInWithDependentResources)), eq(params));
+      argThat(new ParametersMatcher(pInWithDependentResources)));
 
     ValueSetExpansionOutcome actualExpansionResult = context.expandVS(inc, true, false);
 
-    assertEquals(expectedValueSet, actualExpansionResult.getValueset());
+     assertEquals(expectedValueSet, actualExpansionResult.getValueset());
 
     Mockito.verify(terminologyCache).getExpansion(cacheToken);
     Mockito.verify(terminologyCache).cacheExpansion(cacheToken, actualExpansionResult,true);
@@ -325,7 +358,20 @@ public class SimpleWorkerContextTests {
 
     Mockito.verify(terminologyCache).getExpansion(cacheToken);
     Mockito.verify(terminologyCache, times(0)).cacheExpansion(any(), any(), anyBoolean());
-    Mockito.verify(terminologyClient, times(0)).expandValueset(any(), any(), any());
+    Mockito.verify(terminologyClient, times(0)).expandValueset(any(), any());
+  }
+
+  private class ValidationOptionsFhirPublicationMatcher implements ArgumentMatcher<ValidationOptions> {
+
+    final FhirPublication fhirPublication;
+
+    ValidationOptionsFhirPublicationMatcher(FhirPublication fhirPublication) {
+      this.fhirPublication = fhirPublication;
+    }
+    @Override
+    public boolean matches(ValidationOptions argument) {
+      return fhirPublication.toCode().equals(argument.getFhirVersion().toCode());
+    }
   }
 
   @Test
@@ -343,7 +389,7 @@ public class SimpleWorkerContextTests {
     Mockito.doReturn(expectedExpansionResult).when(valueSetExpanderSimple).expand(eq(vs),
       argThat(new ParametersMatcher(pInWithDependentResources)));
 
-    Mockito.doReturn(valueSetExpanderSimple).when(context).constructValueSetExpanderSimple();
+    Mockito.doReturn(valueSetExpanderSimple).when(context).constructValueSetExpanderSimple(argThat(new ValidationOptionsFhirPublicationMatcher(vs.getFHIRPublicationVersion())));
 
     ValueSetExpansionOutcome actualExpansionResult = context.expandVS(vs, true,  true, true, pIn);
 
@@ -351,7 +397,7 @@ public class SimpleWorkerContextTests {
 
     Mockito.verify(terminologyCache).getExpansion(cacheToken);
     Mockito.verify(terminologyCache).cacheExpansion(cacheToken, actualExpansionResult, false);
-    Mockito.verify(terminologyClient, times(0)).expandValueset(any(), any(), any());
+    Mockito.verify(terminologyClient, times(0)).expandValueset(any(), any());
   }
 
   @Test
@@ -370,11 +416,11 @@ public class SimpleWorkerContextTests {
     Mockito.doReturn(expectedExpansionResult).when(valueSetExpanderSimple).expand(eq(vs),
       argThat(new ParametersMatcher(pInWithDependentResources)));
 
-    Mockito.doReturn(valueSetExpanderSimple).when(context).constructValueSetExpanderSimple();
+    Mockito.doReturn(valueSetExpanderSimple).when(context).constructValueSetExpanderSimple(argThat(new ValidationOptionsFhirPublicationMatcher(vs.getFHIRPublicationVersion())));
 
-    Mockito.doReturn(expectedValueSet).when(terminologyClient).expandValueset(eq(vs), argThat(new ParametersMatcher(pInWithDependentResources)), eq(params));
+    Mockito.doReturn(expectedValueSet).when(terminologyClient).expandValueset(eq(vs), argThat(new ParametersMatcher(pInWithDependentResources)));
 
-    ValueSetExpansionOutcome actualExpansionResult = context.expandVS(vs, true,  true, true, pIn);
+    ValueSetExpansionOutcome actualExpansionResult = context.expandVS(vs, true,  true, true, pIn, false);
 
     assertEquals(expectedValueSet, actualExpansionResult.getValueset());
 
@@ -385,46 +431,38 @@ public class SimpleWorkerContextTests {
 
   @Test
   public void testInitializationWithCache() {
+   String address = "dummyUrl";
 
-    Mockito.doReturn(true).when(terminologyCache).hasTerminologyCapabilities();
-    Mockito.doReturn(true).when(terminologyCache).hasCapabilityStatement();
+   Mockito.doReturn(true).when(terminologyCache).hasTerminologyCapabilities(address);
 
-    Mockito.doReturn(terminologyCapabilities).when(terminologyCache).getTerminologyCapabilities();
-    Mockito.doReturn(capabilitiesStatement).when(terminologyCache).getCapabilityStatement();
+    Mockito.doReturn(terminologyCapabilities).when(terminologyCache).getTerminologyCapabilities(address);
 
-    String actual = context.connectToTSServer(terminologyClient, null);
+    context.connectToTSServer(new TerminologyClientR5Factory(), terminologyClient, false);
 
-    assertEquals("dummyVersion", actual);
+    Mockito.verify(terminologyCache).getTerminologyCapabilities(address);
+    Mockito.verify(terminologyClient).getCapabilitiesStatementQuick();
 
-    Mockito.verify(terminologyCache).getTerminologyCapabilities();
-    Mockito.verify(terminologyCache).getCapabilityStatement();
-
+    Mockito.verify(terminologyCache, times(0)).getCapabilityStatement(address);
     Mockito.verify(terminologyClient, times(0)).getTerminologyCapabilities();
-    Mockito.verify(terminologyClient, times(0)).getCapabilitiesStatementQuick();
-
-    Mockito.verify(context).setTxCaps(terminologyCapabilities);
   }
 
   @Test
   public void testInitializationWithClient() {
+    String address = "dummyUrl";
 
-    Mockito.doReturn(false).when(terminologyCache).hasTerminologyCapabilities();
-    Mockito.doReturn(false).when(terminologyCache).hasCapabilityStatement();
+    Mockito.doReturn(false).when(terminologyCache).hasTerminologyCapabilities(address);
 
     Mockito.doReturn(terminologyCapabilities).when(terminologyClient).getTerminologyCapabilities();
     Mockito.doReturn(capabilitiesStatement).when(terminologyClient).getCapabilitiesStatementQuick();
 
-    String actual = context.connectToTSServer(terminologyClient, null);
+   context.connectToTSServer(new TerminologyClientR5Factory(), terminologyClient, false);
 
-    assertEquals("dummyVersion", actual);
-
-    Mockito.verify(terminologyCache, times(0)).getTerminologyCapabilities();
-    Mockito.verify(terminologyCache, times(0)).getCapabilityStatement();
+    Mockito.verify(terminologyCache, times(0)).getTerminologyCapabilities(address);
+    Mockito.verify(terminologyCache, times(0)).getCapabilityStatement(address);
 
     Mockito.verify(terminologyClient).getTerminologyCapabilities();
     Mockito.verify(terminologyClient).getCapabilitiesStatementQuick();
 
-    Mockito.verify(context).setTxCaps(terminologyCapabilities);
   }
 
   public static Stream<Arguments> zipSlipData()  {

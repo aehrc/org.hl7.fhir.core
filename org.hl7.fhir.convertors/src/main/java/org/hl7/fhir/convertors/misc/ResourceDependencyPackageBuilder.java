@@ -14,7 +14,7 @@ import org.hl7.fhir.convertors.loaders.loaderR5.R3ToR5Loader;
 import org.hl7.fhir.convertors.loaders.loaderR5.R4ToR5Loader;
 import org.hl7.fhir.convertors.loaders.loaderR5.R5ToR5Loader;
 import org.hl7.fhir.exceptions.FHIRException;
-import org.hl7.fhir.r5.context.IWorkerContext.IContextResourceLoader;
+import org.hl7.fhir.r5.context.IContextResourceLoader;
 import org.hl7.fhir.r5.context.SimpleWorkerContext;
 import org.hl7.fhir.r5.context.SimpleWorkerContext.SimpleWorkerContextBuilder;
 import org.hl7.fhir.r5.model.CapabilityStatement;
@@ -23,6 +23,7 @@ import org.hl7.fhir.r5.utils.ResourceDependencyWalker;
 import org.hl7.fhir.r5.utils.ResourceDependencyWalker.IResourceDependencyNotifier;
 import org.hl7.fhir.r5.utils.ResourceMinifier;
 import org.hl7.fhir.utilities.VersionUtilities;
+import org.hl7.fhir.utilities.filesystem.ManagedFileAccess;
 import org.hl7.fhir.utilities.json.JsonException;
 import org.hl7.fhir.utilities.json.parser.JsonParser;
 import org.hl7.fhir.utilities.npm.FilesystemPackageCacheManager;
@@ -35,7 +36,7 @@ public class ResourceDependencyPackageBuilder {
   
   public static void main(String[] args) throws IOException {
 
-    FilesystemPackageCacheManager pcm = new FilesystemPackageCacheManager(true);
+    FilesystemPackageCacheManager pcm = new FilesystemPackageCacheManager.Builder().build();
     System.out.println("Load Core");
     NpmPackage src = pcm.loadPackage(VersionUtilities.packageForVersion(args[0]));
     SimpleWorkerContext ctxt = new SimpleWorkerContextBuilder().withAllowLoadingDuplicates(true).fromPackage(src);
@@ -47,7 +48,7 @@ public class ResourceDependencyPackageBuilder {
     
     new ResourceDependencyWalker(ctxt, pckBuilder).walk(ctxt.fetchResource(CapabilityStatement.class, args[2]));
     
-    pckBuilder.npm.save(new FileOutputStream(args[4]));
+    pckBuilder.npm.save(ManagedFileAccess.outStream(args[4]));
   }
 
   private static NpmPackage makeNpm(String vid, String version) throws JsonException, IOException {

@@ -66,10 +66,11 @@ import org.hl7.fhir.r4.terminologies.ValueSetExpander.ValueSetExpansionOutcome;
 import org.hl7.fhir.r4.utils.DefinitionNavigator;
 import org.hl7.fhir.r4.utils.ToolingExtensions;
 import org.hl7.fhir.utilities.CommaSeparatedStringBuilder;
-import org.hl7.fhir.utilities.SimpleHTTPClient;
-import org.hl7.fhir.utilities.SimpleHTTPClient.HTTPResult;
 import org.hl7.fhir.utilities.TextFile;
 import org.hl7.fhir.utilities.Utilities;
+import org.hl7.fhir.utilities.filesystem.ManagedFileAccess;
+import org.hl7.fhir.utilities.http.HTTPResult;
+import org.hl7.fhir.utilities.http.ManagedWebAccess;
 import org.hl7.fhir.utilities.validation.ValidationMessage;
 import org.hl7.fhir.utilities.validation.ValidationMessage.Source;
 
@@ -1379,11 +1380,11 @@ public class ProfileComparer {
   private String cachedFetch(String id, String source) throws IOException {
     String tmpDir = System.getProperty("java.io.tmpdir");
     String local = Utilities.path(tmpDir, id);
-    File f = new File(local);
+    File f = ManagedFileAccess.file(local);
     if (f.exists())
       return TextFile.fileToString(f);
-    SimpleHTTPClient http = new SimpleHTTPClient();
-    HTTPResult res = http.get(source);
+
+    HTTPResult res = ManagedWebAccess.get(source);
     res.checkThrowException();
     String result = TextFile.bytesToString(res.getContent());
     TextFile.stringToFile(result, f);

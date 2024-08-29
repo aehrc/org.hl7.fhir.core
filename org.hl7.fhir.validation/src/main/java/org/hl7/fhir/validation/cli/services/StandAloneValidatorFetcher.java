@@ -4,10 +4,13 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import org.hl7.fhir.convertors.txClient.TerminologyClientFactory;
 import org.hl7.fhir.exceptions.FHIRException;
@@ -23,6 +26,10 @@ import org.hl7.fhir.r5.terminologies.client.ITerminologyClient;
 import org.hl7.fhir.r5.utils.validation.IResourceValidator;
 import org.hl7.fhir.r5.utils.validation.IValidationPolicyAdvisor;
 import org.hl7.fhir.r5.utils.validation.IValidatorResourceFetcher;
+import org.hl7.fhir.r5.utils.validation.IValidationPolicyAdvisor.AdditionalBindingPurpose;
+import org.hl7.fhir.r5.utils.validation.IValidationPolicyAdvisor.CodedContentValidationAction;
+import org.hl7.fhir.r5.utils.validation.IValidationPolicyAdvisor.ElementValidationAction;
+import org.hl7.fhir.r5.utils.validation.IValidationPolicyAdvisor.ResourceValidationAction;
 import org.hl7.fhir.r5.utils.validation.constants.BindingKind;
 import org.hl7.fhir.r5.utils.validation.constants.CodedContentValidationPolicy;
 import org.hl7.fhir.r5.utils.validation.constants.ContainedReferenceValidationPolicy;
@@ -35,11 +42,12 @@ import org.hl7.fhir.utilities.json.parser.JsonParser;
 import org.hl7.fhir.utilities.npm.FilesystemPackageCacheManager;
 import org.hl7.fhir.utilities.npm.NpmPackage;
 import org.hl7.fhir.validation.cli.utils.Common;
+import org.hl7.fhir.validation.instance.BasePolicyAdvisorForFullValidation;
 
 import javax.annotation.Nonnull;
 
 
-public class StandAloneValidatorFetcher implements IValidatorResourceFetcher, IValidationPolicyAdvisor, IWorkerContextManager.ICanonicalResourceLocator {
+public class StandAloneValidatorFetcher extends BasePolicyAdvisorForFullValidation implements IValidatorResourceFetcher, IValidationPolicyAdvisor, IWorkerContextManager.ICanonicalResourceLocator {
 
   List<String> mappingsUris = new ArrayList<>();
   private FilesystemPackageCacheManager pcm;
@@ -50,7 +58,7 @@ public class StandAloneValidatorFetcher implements IValidatorResourceFetcher, IV
   private Map<String, NpmPackage> pidMap = new HashMap<>();
 
   public StandAloneValidatorFetcher(FilesystemPackageCacheManager pcm, IWorkerContext context, IPackageInstaller installer) {
-    super();
+    super(ReferenceValidationPolicy.IGNORE);
     this.pcm = pcm;
     this.context = context;
     this.installer = installer;
@@ -66,20 +74,9 @@ public class StandAloneValidatorFetcher implements IValidatorResourceFetcher, IV
                                                       Object appContext,
                                                       String path,
                                                       String url) {
-    return ReferenceValidationPolicy.CHECK_TYPE_IF_EXISTS;
+    return ReferenceValidationPolicy.IGNORE;
   }
-
-  @Override
-  public ContainedReferenceValidationPolicy policyForContained(IResourceValidator validator,
-                                                               Object appContext,
-                                                               String containerType,
-                                                               String containerId,
-                                                               Element.SpecialElement containingResourceType,
-                                                               String path,
-                                                               String url) {
-    return ContainedReferenceValidationPolicy.CHECK_VALID;
-  }
-
+  
   @Override
   public boolean resolveURL(IResourceValidator validator, Object appContext, String path, String url, String type, boolean canonical) throws IOException, FHIRException {
     if (!Utilities.isAbsoluteUrl(url)) {
@@ -253,7 +250,7 @@ public class StandAloneValidatorFetcher implements IValidatorResourceFetcher, IV
   }
 
   @Override
-  public CanonicalResource fetchCanonicalResource(IResourceValidator validator, String url) throws URISyntaxException {
+  public CanonicalResource fetchCanonicalResource(IResourceValidator validator, Object appContext, String url) throws URISyntaxException {
     if (url.contains("|")) {
       url = url.substring(0, url.indexOf("|"));
     }
@@ -270,7 +267,7 @@ public class StandAloneValidatorFetcher implements IValidatorResourceFetcher, IV
 
   @Nonnull
   protected ITerminologyClient getTerminologyClient(String root) throws URISyntaxException {
-    return TerminologyClientFactory.makeClient("source", root, Common.getValidatorUserAgent(), context.getVersion());
+    return new TerminologyClientFactory(context.getVersion()).makeClient("source", root, Common.getValidatorUserAgent(), null);
   }
 
   private String getRoot(String[] p, String url) {
@@ -296,9 +293,8 @@ public class StandAloneValidatorFetcher implements IValidatorResourceFetcher, IV
   }
 
   @Override
-  public CodedContentValidationPolicy policyForCodedContent(IResourceValidator validator, Object appContext, String stackPath, ElementDefinition definition,
-      StructureDefinition structure, BindingKind kind, ValueSet valueSet, List<String> systems) {
-    return CodedContentValidationPolicy.VALUESET;
+  public Set<String> fetchCanonicalResourceVersions(IResourceValidator validator, Object appContext, String url) {
+    return new HashSet<>();
   }
 
 }

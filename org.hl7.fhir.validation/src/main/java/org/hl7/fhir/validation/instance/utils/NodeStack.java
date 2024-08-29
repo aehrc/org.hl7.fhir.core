@@ -37,11 +37,26 @@ public class NodeStack {
     this.context = context;
     ids = new HashMap<>();
     this.element = element;
-    literalPath = (initialPath == null ? "" : initialPath+".") + element.getPath();
+    literalPath = (initialPath == null ? "" : initialPath+".") + buildPathForElement(element, true);
     workingLang = validationLanguage;
     if (!element.getName().equals(element.fhirType())) {
       logicalPaths = new HashSet<>();
       logicalPaths.add(element.fhirType());
+    }
+  }
+
+  private String buildPathForElement(Element e, boolean first) {
+    if (e.getParentForValidator() != null) {
+      String node = e.getName().contains("/") ? e.getName().substring(e.getName().lastIndexOf("/")+1) : e.getName();
+      if (e.hasIndex() && e.getProperty().isList() && e.getSpecial() == null) {
+        node = node+"["+Integer.toString(e.getIndex())+"]";
+      }
+      if (!first && e.isResource()) {
+        node = node +"/*"+e.fhirType()+"/"+e.getIdBase()+"*/";
+      }
+      return buildPathForElement(e.getParentForValidator(), false)+"."+node;
+    } else {
+      return e.getPath();
     }
   }
 
@@ -119,7 +134,7 @@ public class NodeStack {
       if (en.endsWith("[x]")) {
         en = en.substring(0, en.length() - 3);
         String t = n.substring(en.length());
-        if (isPrimitiveType(Utilities.uncapitalize(t)))
+        if (context.isPrimitiveType(Utilities.uncapitalize(t)))
           t = Utilities.uncapitalize(t);
         res.literalPath = res.literalPath.substring(0, res.literalPath.lastIndexOf(".")) + "." + en + ".ofType(" + t + ")";
       } else {
@@ -194,10 +209,6 @@ public class NodeStack {
     return path.substring(path.lastIndexOf(".") + 1);
   }
 
-  public boolean isPrimitiveType(String code) {
-    StructureDefinition sd = context.fetchTypeDefinition(code);
-    return sd != null && sd.getKind() == StructureDefinitionKind.PRIMITIVETYPE;
-  }
 
   public String getWorkingLang() {
     return workingLang;
@@ -248,6 +259,5 @@ public class NodeStack {
   public int col() {
     return element.col();
   }
-
 
 }
