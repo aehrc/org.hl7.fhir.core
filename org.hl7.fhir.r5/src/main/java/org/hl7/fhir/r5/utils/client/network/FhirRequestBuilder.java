@@ -27,6 +27,7 @@ public class FhirRequestBuilder {
   protected static final String HTTP_PROXY_USER = "http.proxyUser";
   protected static final String HTTP_PROXY_PASS = "http.proxyPassword";
   protected static final String HEADER_PROXY_AUTH = "Proxy-Authorization";
+  protected static final String HEADER_AUTHORIZATION = "Authorization";
   protected static final String LOCATION_HEADER = "location";
   protected static final String CONTENT_LOCATION_HEADER = "content-location";
   protected static final String DEFAULT_CHARSET = "UTF-8";
@@ -183,6 +184,11 @@ public class FhirRequestBuilder {
         String credential = Credentials.basic(httpProxyUser, httpProxyPass);
         return response.request().newBuilder()
           .header(HEADER_PROXY_AUTH, credential)
+          .build();
+      } else if (FhirSettings.hasApiKey()) {
+        String credential = FhirSettings.getApiKey();
+        return response.request().newBuilder()
+          .header(HEADER_AUTHORIZATION, "Bearer: " + credential)
           .build();
       }
       return response.request().newBuilder().build();
