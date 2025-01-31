@@ -2,6 +2,7 @@ package org.hl7.fhir.utilities;
 
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.StringJoiner;
 
@@ -86,6 +87,8 @@ public class VersionUtilities {
     private int compareInteger(String s1, String s2) {
       if (s1 == null) {
         return s2 == null ? 0 : 1;
+      } else if (s2 == null) {
+        return -1;
       } else {
         return Integer.compare(Integer.parseInt(s1), Integer.parseInt(s2));
       }
@@ -328,7 +331,7 @@ public class VersionUtilities {
     if (Utilities.noString(version)) {
       return false;
     }
-    return version.matches("^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-\\+]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-\\+][0-9a-zA-Z-\\+]*))*))?$");
+    return version.matches("^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-\\+]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-\\+][0-9a-zA-Z-\\+]*))*))?)?$");
   }
 
   /** 
@@ -649,6 +652,15 @@ public class VersionUtilities {
     String mm1 = getMajMin(v1);
     String mm2 = getMajMin(v2);
     return mm1 != null && mm2 != null && mm1.equals(mm2);
+  }
+  
+  public static boolean versionsMatch(String v1, List<String> v2l) {
+    for (String v2 : v2l) {
+      if (versionsMatch(v1, v2)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   public static boolean isR5VerOrLater(String version) {

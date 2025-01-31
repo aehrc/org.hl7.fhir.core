@@ -29,6 +29,7 @@ import org.hl7.fhir.r5.terminologies.utilities.TerminologyServiceErrorClass;
 import org.hl7.fhir.r5.terminologies.utilities.ValidationResult;
 import org.hl7.fhir.r5.utils.XVerExtensionManager;
 import org.hl7.fhir.r5.utils.validation.ValidationContextCarrier;
+import org.hl7.fhir.r5.utils.validation.ValidatorSession;
 import org.hl7.fhir.r5.utils.validation.ValidationContextCarrier.ValidationContextResourceProxy;
 import org.hl7.fhir.utilities.CommaSeparatedStringBuilder;
 import org.hl7.fhir.utilities.FhirPublication;
@@ -53,24 +54,30 @@ import ca.uhn.fhir.util.ObjectUtil;
 
 public class ImplementationGuideValidator extends BaseValidator {
 
-  public ImplementationGuideValidator(IWorkerContext context, XVerExtensionManager xverManager, boolean debug) {
-    super(context, xverManager, debug);
+  public ImplementationGuideValidator(IWorkerContext context, XVerExtensionManager xverManager, boolean debug, ValidatorSession session) {
+    super(context, xverManager, debug, session);
   }
 
   public boolean validateImplementationGuide(ValidationContext valContext, List<ValidationMessage> errors, Element ig, NodeStack stack) {
     boolean ok = true;
-    String fver = ig.getNamedChildValue("fhirVersion");
-
+    List<Element> el = ig.getChildren("fhirVersion");
+    List<String> fvl = new ArrayList<String>();
+    for (Element e : el) {
+      String fver = e.primitiveValue();
+      fvl.add(fver);
+    }
+    warning(errors, "2024-06-13", IssueType.BUSINESSRULE, ig.line(), ig.col(), stack.getLiteralPath(), !fvl.isEmpty(), I18nConstants.IG_NO_VERSION);
     List<Element> dependencies = ig.getChildrenByName("dependsOn");
     int i = 0;
     for (Element dependency : dependencies) {
-      ok = checkDependency(errors, ig, stack.push(dependency, i, null, null), dependency, fver) && ok;
+      ok = checkDependency(errors, ig, stack.push(dependency, i, null, null), dependency, fvl) && ok;
       i++;
     }
+
     return ok;
   }
 
-  private boolean checkDependency(List<ValidationMessage> errors, Element ig, NodeStack stack, Element dependency, String fver) {
+  private boolean checkDependency(List<ValidationMessage> errors, Element ig, NodeStack stack, Element dependency, List<String> fvl) {
     boolean ok = true;
     String url = dependency.getNamedChildValue("url");
     String packageId = dependency.getNamedChildValue("packageId");
@@ -95,13 +102,15 @@ public class ImplementationGuideValidator extends BaseValidator {
         ok = rule(errors, "2024-06-13", IssueType.BUSINESSRULE, dependency.line(), dependency.col(), stack.getLiteralPath(), (packageId+"#"+version).matches(FilesystemPackageCacheManager.PACKAGE_VERSION_REGEX), I18nConstants.IG_DEPENDENCY_INVALID_PACKAGE_VERSION, version) && ok;               
         NpmPackage npm = pcm.loadPackage(packageId, version);
         if (warning(errors, "2024-06-13", IssueType.BUSINESSRULE, dependency.line(), dependency.col(), stack.getLiteralPath(), npm != null, I18nConstants.IG_DEPENDENCY_PACKAGE_UNKNOWN, packageId+"#"+version)) {
-          String pver = npm.fhirVersion();
-          if (!VersionUtilities.versionsMatch(pver, fver)) {
-            if ("hl7.fhir.uv.extensions".equals(packageId)) {
-              ok = rule(errors, "2024-06-13", IssueType.BUSINESSRULE, dependency.line(), dependency.col(), stack.getLiteralPath(), false, I18nConstants.IG_DEPENDENCY_VERSION_ERROR, fver, packageId+"#"+version, pver, 
-                  "hl7.fhir.uv.extensions."+VersionUtilities.getNameForVersion(fver).toLowerCase()) && ok;                           
-            } else {
-              warning(errors, "2024-06-13", IssueType.BUSINESSRULE, dependency.line(), dependency.col(), stack.getLiteralPath(), false, I18nConstants.IG_DEPENDENCY_VERSION_WARNING, fver, packageId+"#"+version, pver);
+          if (fvl.isEmpty()) {
+            String pver = npm.fhirVersion();
+            if (!VersionUtilities.versionsMatch(pver, fvl)) {
+              if ("hl7.fhir.uv.extensions".equals(packageId)) {
+                ok = rule(errors, "2024-06-13", IssueType.BUSINESSRULE, dependency.line(), dependency.col(), stack.getLiteralPath(), false, I18nConstants.IG_DEPENDENCY_VERSION_ERROR, CommaSeparatedStringBuilder.join(",", fvl), packageId+"#"+version, pver, 
+                    "hl7.fhir.uv.extensions."+VersionUtilities.getNameForVersion(fvl.get(0)).toLowerCase()) && ok;                           
+              } else {
+                warning(errors, "2024-06-13", IssueType.BUSINESSRULE, dependency.line(), dependency.col(), stack.getLiteralPath(), false, I18nConstants.IG_DEPENDENCY_VERSION_WARNING, CommaSeparatedStringBuilder.join(",", fvl), packageId+"#"+version, pver);
+              }
             }
           }
         }

@@ -35,6 +35,7 @@ import org.hl7.fhir.r5.terminologies.CodeSystemUtilities;
 import org.hl7.fhir.r5.terminologies.CodeSystemUtilities.CodeSystemNavigator;
 import org.hl7.fhir.r5.utils.EOperationOutcome;
 import org.hl7.fhir.r5.utils.ToolingExtensions;
+import org.hl7.fhir.r5.utils.UserDataNames;
 import org.hl7.fhir.utilities.LoincLinker;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.xhtml.XhtmlNode;
@@ -53,7 +54,8 @@ public class CodeSystemRenderer extends TerminologyRenderer {
       genSummaryTable(status, x, (CodeSystem) r.getBase());
       render(status, x, (CodeSystem) r.getBase(), r);      
     } else {
-      throw new Error("CodeSystemRenderer only renders native resources directly");
+      // the intention is to change this in the future
+      x.para().tx("CodeSystemRenderer only renders native resources directly");
     }
   }
 
@@ -112,7 +114,7 @@ public class CodeSystemRenderer extends TerminologyRenderer {
   private void generateFilters(XhtmlNode x, CodeSystem cs) {
     if (cs.hasFilter()) {
       x.para().b().tx(formatPhrase(RenderingContext.CODESYSTEM_FILTERS));
-      XhtmlNode tbl = x.table("grid");
+      XhtmlNode tbl = x.table("grid", false);
       XhtmlNode tr = tbl.tr();
       tr.td().b().tx(formatPhrase(RenderingContext.GENERAL_CODE));
       tr.td().b().tx(formatPhrase(RenderingContext.GENERAL_DESC));
@@ -143,7 +145,7 @@ public class CodeSystemRenderer extends TerminologyRenderer {
       
       x.para().b().tx(formatPhrase(RenderingContext.GENERAL_PROPS));
       x.para().b().tx(formatPhrase(RenderingContext.CODESYSTEM_PROPS_DESC));
-      XhtmlNode tbl = x.table("grid");
+      XhtmlNode tbl = x.table("grid", false);
       XhtmlNode tr = tbl.tr();
       if (hasRendered) {
         tr.td().b().tx(formatPhrase(RenderingContext.GENERAL_NAME));        
@@ -222,7 +224,7 @@ public class CodeSystemRenderer extends TerminologyRenderer {
       return;
     }
     
-    XhtmlNode t = x.table( "codes");
+    XhtmlNode t = x.table( "codes", false);
     boolean definitions = false;
     boolean commentS = false;
     boolean deprecated = false;
@@ -270,7 +272,7 @@ public class CodeSystemRenderer extends TerminologyRenderer {
     if (langs.size() >= 2) {
       Collections.sort(langs);
       x.para().b().tx(context.formatPhrase(RenderingContext.GENERAL_ADD_LANG));
-      t = x.table("codes");
+      t = x.table("codes", false);
       XhtmlNode tr = t.tr();
       tr.td().b().tx(context.formatPhrase(RenderingContext.GENERAL_CODE));
       for (String lang : langs)
@@ -408,7 +410,7 @@ public class CodeSystemRenderer extends TerminologyRenderer {
   }
 
   private boolean conceptsHaveVersion(ConceptDefinitionComponent c) {
-    if (c.hasUserData("cs.version.notes"))
+    if (c.hasUserData(UserDataNames.tx_cs_version_notes))
       return true;
     for (ConceptDefinitionComponent g : c.getConcept())
       if (conceptsHaveVersion(g))
@@ -566,8 +568,9 @@ public class CodeSystemRenderer extends TerminologyRenderer {
     }
     if (version) {
       td = tr.td();
-      if (c.hasUserData("cs.version.notes"))
-        td.addText(c.getUserString("cs.version.notes"));
+      if (c.hasUserData(UserDataNames.tx_cs_version_notes)) { // todo: this is never set
+        td.addText(c.getUserString(UserDataNames.tx_cs_version_notes));
+      }
     }
     if (properties != null) {
       for (PropertyComponent pc : properties) {

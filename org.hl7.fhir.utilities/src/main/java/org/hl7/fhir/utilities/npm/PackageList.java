@@ -176,6 +176,14 @@ public class PackageList {
       setDate(date);
     }
 
+    public List<String> languages() {
+      return json.forceArray("languages").asStrings();
+    }
+    
+    public PackageListEntry addLang(String langCode) {
+      json.forceArray("languages").add(langCode);
+      return this;
+    }
   }
   
   private String source;
@@ -290,6 +298,7 @@ public class PackageList {
     }
     cibuild = new PackageListEntry(new JsonObject());
     cibuild.init(version, path, status, status, null);
+    cibuild.describe(desc, null, null);
     json.getJsonArray("list").add(0, cibuild.json);    
   }
 

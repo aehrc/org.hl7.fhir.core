@@ -2,6 +2,7 @@ package org.hl7.fhir.validation;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -19,7 +20,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 
 import org.fhir.ucum.UcumEssenceService;
 import org.hl7.fhir.convertors.factory.VersionConvertorFactory_10_50;
@@ -35,8 +35,12 @@ import org.hl7.fhir.r5.context.ILoggingService;
 import org.hl7.fhir.r5.context.IWorkerContextManager;
 import org.hl7.fhir.r5.context.SimpleWorkerContext;
 import org.hl7.fhir.r5.context.SystemOutLoggingService;
-import org.hl7.fhir.r5.elementmodel.*;
+import org.hl7.fhir.r5.elementmodel.Element;
+import org.hl7.fhir.r5.elementmodel.Manager;
 import org.hl7.fhir.r5.elementmodel.Manager.FhirFormat;
+import org.hl7.fhir.r5.elementmodel.ObjectConverter;
+import org.hl7.fhir.r5.elementmodel.ParserBase;
+import org.hl7.fhir.r5.elementmodel.SHCParser;
 import org.hl7.fhir.r5.fhirpath.ExpressionNode;
 import org.hl7.fhir.r5.fhirpath.FHIRPathEngine;
 import org.hl7.fhir.r5.formats.FormatUtilities;
@@ -61,9 +65,9 @@ import org.hl7.fhir.r5.model.StructureMap;
 import org.hl7.fhir.r5.model.ValueSet;
 import org.hl7.fhir.r5.renderers.RendererFactory;
 import org.hl7.fhir.r5.renderers.utils.RenderingContext;
-import org.hl7.fhir.r5.renderers.utils.ResourceWrapper;
 import org.hl7.fhir.r5.renderers.utils.RenderingContext.GenerationRules;
 import org.hl7.fhir.r5.renderers.utils.RenderingContext.ResourceRendererMode;
+import org.hl7.fhir.r5.renderers.utils.ResourceWrapper;
 import org.hl7.fhir.r5.utils.EOperationOutcome;
 import org.hl7.fhir.r5.utils.ToolingExtensions;
 import org.hl7.fhir.r5.utils.structuremap.StructureMapUtilities;
@@ -72,15 +76,14 @@ import org.hl7.fhir.r5.utils.validation.IMessagingServices;
 import org.hl7.fhir.r5.utils.validation.IResourceValidator;
 import org.hl7.fhir.r5.utils.validation.IValidationPolicyAdvisor;
 import org.hl7.fhir.r5.utils.validation.IValidatorResourceFetcher;
-import org.hl7.fhir.r5.utils.validation.IValidationPolicyAdvisor.AdditionalBindingPurpose;
-import org.hl7.fhir.r5.utils.validation.IValidationPolicyAdvisor.CodedContentValidationAction;
+import org.hl7.fhir.r5.utils.validation.ValidatorSession;
 import org.hl7.fhir.r5.utils.validation.constants.BestPracticeWarningLevel;
 import org.hl7.fhir.r5.utils.validation.constants.BindingKind;
 import org.hl7.fhir.r5.utils.validation.constants.CheckDisplayOption;
-import org.hl7.fhir.r5.utils.validation.constants.CodedContentValidationPolicy;
 import org.hl7.fhir.r5.utils.validation.constants.ContainedReferenceValidationPolicy;
 import org.hl7.fhir.r5.utils.validation.constants.IdStatus;
 import org.hl7.fhir.r5.utils.validation.constants.ReferenceValidationPolicy;
+import org.hl7.fhir.utilities.ByteProvider;
 import org.hl7.fhir.utilities.FhirPublication;
 import org.hl7.fhir.utilities.IniFile;
 import org.hl7.fhir.utilities.SIDUtilities;
@@ -106,10 +109,9 @@ import org.hl7.fhir.validation.cli.utils.ProfileLoader;
 import org.hl7.fhir.validation.cli.utils.QuestionnaireMode;
 import org.hl7.fhir.validation.cli.utils.SchemaValidator;
 import org.hl7.fhir.validation.cli.utils.ValidationLevel;
-import org.hl7.fhir.validation.instance.BasePolicyAdvisorForFullValidation;
 import org.hl7.fhir.validation.instance.InstanceValidator;
+import org.hl7.fhir.validation.instance.advisor.BasePolicyAdvisorForFullValidation;
 import org.hl7.fhir.validation.instance.utils.ValidationContext;
-import org.hl7.fhir.utilities.ByteProvider;
 import org.xml.sax.SAXException;
 
 import lombok.Getter;
@@ -208,7 +210,7 @@ public class ValidationEngine implements IValidatorResourceFetcher, IValidationP
   @Getter @Setter private String version;
   @Getter @Setter private String language;
   @Setter private FilesystemPackageCacheManager pcm;
-  @Getter @Setter private PrintWriter mapLog;
+  @Getter private PrintWriter mapLog;
   @Getter @Setter private boolean debug = false;
   @Getter @Setter private IValidatorResourceFetcher fetcher;
   @Getter @Setter private IValidationPolicyAdvisor policyAdvisor;
@@ -218,7 +220,9 @@ public class ValidationEngine implements IValidatorResourceFetcher, IValidationP
   @Getter @Setter private boolean noUnicodeBiDiControlChars;
   @Getter @Setter private boolean securityChecks;
   @Getter @Setter private boolean crumbTrails;
+  @Getter @Setter private boolean showMessageIds;
   @Getter @Setter private boolean forPublication;
+  @Getter @Setter private String aiService;
   @Getter @Setter private boolean allowExampleUrls;
   @Getter @Setter private boolean showMessagesFromReferences;
   @Getter @Setter private boolean doImplicitFHIRPathStringConversion;
@@ -226,6 +230,8 @@ public class ValidationEngine implements IValidatorResourceFetcher, IValidationP
   @Getter @Setter private boolean allowDoubleQuotesInFHIRPath;
   @Getter @Setter private boolean checkIPSCodes;
   @Getter @Setter private BestPracticeWarningLevel bestPracticeLevel;
+  @Getter @Setter private boolean unknownCodeSystemsCauseErrors;
+  @Getter @Setter private boolean noExperimentalContent;
   @Getter @Setter private Locale locale;
   @Getter @Setter private List<ImplementationGuide> igs = new ArrayList<>();
   @Getter @Setter private List<String> extensionDomains = new ArrayList<>();
@@ -273,6 +279,7 @@ public class ValidationEngine implements IValidatorResourceFetcher, IValidationP
     securityChecks = other.securityChecks;
     crumbTrails = other.crumbTrails;
     forPublication = other.forPublication;
+    aiService = other.aiService;
     allowExampleUrls = other.allowExampleUrls;
     showMessagesFromReferences = other.showMessagesFromReferences;
     doImplicitFHIRPathStringConversion = other.doImplicitFHIRPathStringConversion;
@@ -289,6 +296,7 @@ public class ValidationEngine implements IValidatorResourceFetcher, IValidationP
     fhirPathEngine = other.fhirPathEngine;
     igLoader = other.igLoader;
     jurisdiction = other.jurisdiction;
+    unknownCodeSystemsCauseErrors = other.unknownCodeSystemsCauseErrors;
   }
   
   /**
@@ -342,6 +350,7 @@ public class ValidationEngine implements IValidatorResourceFetcher, IValidationP
     @With
     private boolean THO = true;
 
+    private static final boolean USE_ECOSYSTEM_DEFAULT = true;
 
     public ValidationEngineBuilder() {
       terminologyCachePath = null;
@@ -352,10 +361,24 @@ public class ValidationEngine implements IValidatorResourceFetcher, IValidationP
       txVersion = null;
       timeTracker = null;
       canRunWithoutTerminologyServer = false;
-      useEcosystem = true;
+      useEcosystem = USE_ECOSYSTEM_DEFAULT;
       loggingService = new SystemOutLoggingService();
     }
 
+    /**
+     * @deprecated This method will be removed in a future release, and should not be used outside of this class.
+     * Use {@link #ValidationEngineBuilder()} instead.
+     */
+    @Deprecated
+    public ValidationEngineBuilder(String terminologyCachePath, String userAgent, String version, String txServer, String txLog, FhirPublication txVersion, TimeTracker timeTracker, boolean canRunWithoutTerminologyServer, ILoggingService loggingService, boolean THO) {
+      this(terminologyCachePath, userAgent, version, txServer, txLog, txVersion, USE_ECOSYSTEM_DEFAULT, timeTracker, canRunWithoutTerminologyServer, loggingService, THO);
+    }
+
+    /**
+     * @deprecated This method will be made private in a future release, and should not be used outside of this class.
+     * Use {@link #ValidationEngineBuilder()} instead.
+     */
+    @Deprecated
     public ValidationEngineBuilder(String terminologyCachePath, String userAgent, String version, String txServer, String txLog, FhirPublication txVersion, boolean useEcosystem, TimeTracker timeTracker, boolean canRunWithoutTerminologyServer, ILoggingService loggingService, boolean THO) {
       this.terminologyCachePath = terminologyCachePath;
       this.userAgent = userAgent;
@@ -366,7 +389,7 @@ public class ValidationEngine implements IValidatorResourceFetcher, IValidationP
       this.timeTracker = timeTracker;
       this.canRunWithoutTerminologyServer = canRunWithoutTerminologyServer;
       this.loggingService = loggingService;
-      this.useEcosystem = true;
+      this.useEcosystem = useEcosystem;
       this.THO = THO;
     }
 
@@ -850,7 +873,7 @@ public class ValidationEngine implements IValidatorResourceFetcher, IValidationP
   }
 
   public InstanceValidator getValidator(FhirFormat format) throws FHIRException, IOException {
-    InstanceValidator validator = new InstanceValidator(context, null, null);
+    InstanceValidator validator = new InstanceValidator(context, null, null, new ValidatorSession());
     context.getTxClientManager().setUsage("validation");
     validator.setHintAboutNonMustSupport(hintAboutNonMustSupport);
     validator.setAnyExtensionsAllowed(anyExtensionsAllowed);
@@ -883,6 +906,8 @@ public class ValidationEngine implements IValidatorResourceFetcher, IValidationP
     validator.setNoUnicodeBiDiControlChars(noUnicodeBiDiControlChars);
     validator.setDoImplicitFHIRPathStringConversion(doImplicitFHIRPathStringConversion);
     validator.setCheckIPSCodes(checkIPSCodes);
+    validator.setAIService(aiService);
+    validator.setCacheFolder(context.getTxCache().getFolder());
     if (format == FhirFormat.SHC) {
       igLoader.loadIg(getIgs(), getBinaries(), SHCParser.CURRENT_PACKAGE, true);      
     }
@@ -891,6 +916,8 @@ public class ValidationEngine implements IValidatorResourceFetcher, IValidationP
     if (policyAdvisor != null) {
       validator.setPolicyAdvisor(policyAdvisor);
     }
+    validator.setUnknownCodeSystemsCauseErrors(unknownCodeSystemsCauseErrors);
+    validator.setNoExperimentalContent(noExperimentalContent);
     return validator;
   }
 
@@ -921,7 +948,7 @@ public class ValidationEngine implements IValidatorResourceFetcher, IValidationP
     if (output.startsWith("http://")) {
       ByteArrayOutputStream bs = new ByteArrayOutputStream();
       handleOutputToStream(r, output, bs, version);
-      HTTPResult res = ManagedWebAccess.post(output, bs.toByteArray(), "application/fhir+xml", "application/fhir+xml");
+      HTTPResult res = ManagedWebAccess.post(Arrays.asList("web"), output, bs.toByteArray(), "application/fhir+xml", "application/fhir+xml");
       res.checkThrowException();
     } else {
       FileOutputStream s = ManagedFileAccess.outStream(output);
@@ -1078,7 +1105,7 @@ public class ValidationEngine implements IValidatorResourceFetcher, IValidationP
 
   @Override
   public byte[] fetchRaw(IResourceValidator validator, String source) throws IOException {
-    HTTPResult res = ManagedWebAccess.get(source);
+    HTTPResult res = ManagedWebAccess.get(Arrays.asList("web"), source);
     res.checkThrowException();
     return res.getContent();
   }
@@ -1265,6 +1292,41 @@ public class ValidationEngine implements IValidatorResourceFetcher, IValidationP
       IMessagingServices msgServices, List<ValidationMessage> messages) {
     return new BasePolicyAdvisorForFullValidation(ReferenceValidationPolicy.CHECK_VALID).getImpliedProfilesForResource(validator, appContext, stackPath, 
           definition, structure, resource, valid, msgServices, messages);
+  }
+
+  @Override
+  public boolean isSuppressMessageId(String path, String messageId) {
+    return policyAdvisor.isSuppressMessageId(path, messageId);
+  }
+
+  @Override
+  public ReferenceValidationPolicy getReferencePolicy() {
+    return ReferenceValidationPolicy.IGNORE;
+  }
+
+  public void loadExpansionParameters(String expansionParameters) {
+    System.out.println("Load Expansion Parameters: "+expansionParameters);
+    Parameters p = null;
+    try {
+      p = (Parameters) new XmlParser().parse(new FileInputStream(expansionParameters));
+    } catch (Exception e) {
+    }
+    if (p == null) {
+      try {
+        p = (Parameters) new JsonParser().parse(new FileInputStream(expansionParameters));
+      } catch (Exception e) {
+        System.out.println("Unable to load expansion parameters '"+expansionParameters+"' as either xml or json: "+e.getMessage());
+        throw new FHIRException("Unable to load expansion parameters '"+expansionParameters+"' as either xml or json: "+e.getMessage());
+      }
+    }
+    context.setExpansionParameters(p);
+
+
+  }
+
+  @Override
+  public SpecialValidationAction policyForSpecialValidation(IResourceValidator validator, Object appContext, SpecialValidationRule rule, String stackPath, Element resource, Element element) {
+    return SpecialValidationAction.CHECK_RULE;
   }
 
 }

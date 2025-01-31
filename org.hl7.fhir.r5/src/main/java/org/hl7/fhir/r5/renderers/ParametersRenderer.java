@@ -43,7 +43,7 @@ public class ParametersRenderer extends ResourceRenderer {
   public void buildNarrative(RenderingStatus status, XhtmlNode x, ResourceWrapper r) throws FHIRFormatError, DefinitionException, IOException, FHIRException, EOperationOutcome {
     renderResourceTechDetails(r, x);
     x.h2().tx(context.formatPhrase(RenderingContext.GENERAL_PARS));
-    XhtmlNode tbl = x.table("grid");
+    XhtmlNode tbl = x.table("grid", false);
     params(status, tbl, r.children("parameter"), 0);
   }
 
@@ -66,8 +66,18 @@ public class ParametersRenderer extends ResourceRenderer {
         td = tr.td();
         XhtmlNode para = td.para();
         para.tx(rw.fhirType()+"/"+rw.getId());
-        para.an(context.prefixAnchor(rw.fhirType()+"_"+rw.getId())).tx(" ");
-        para.an(context.prefixAnchor("hc"+rw.fhirType()+"_"+rw.getId())).tx(" ");
+        checkAddLink(para, rw.fhirType()+"_"+rw.getId());
+        checkAddLink(para, rw.fhirType()+"_"+rw.getScopedId());
+        checkAddLink(para, "hc"+rw.fhirType()+"_"+rw.getId());
+        checkAddLink(para, "hc"+rw.fhirType()+"_"+rw.getScopedId());
+        if (rw.has("meta")) {
+          ResourceWrapper m = rw.child("meta");
+          String ver = m.primitiveValue("version");
+          if (ver != null) {
+            checkAddLink(para, "hc"+rw.fhirType()+"_"+rw.getId()+"/"+ver);
+            checkAddLink(para, "hc"+rw.fhirType()+"_"+rw.getScopedId()+"/"+ver);            
+          }
+        }
         XhtmlNode x = rw.getNarrative();
         if (x != null) {
           td.addChildren(x);
@@ -80,6 +90,16 @@ public class ParametersRenderer extends ResourceRenderer {
         params(status, tbl, p.children("part"), indent+1);
       }
     }
+  }
+
+
+  private void checkAddLink(XhtmlNode para, String anchor) {
+    if (!context.hasAnchor(anchor)) {
+      context.addAnchor(anchor);
+      para.an(context.prefixAnchor(anchor)).tx(" ");
+    }
+
+    
   }
 
 }

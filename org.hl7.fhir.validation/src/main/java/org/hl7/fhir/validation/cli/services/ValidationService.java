@@ -2,7 +2,6 @@ package org.hl7.fhir.validation.cli.services;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -10,7 +9,15 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
 import java.net.URISyntaxException;
 import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import javax.annotation.Nonnull;
 
@@ -26,23 +33,35 @@ import org.hl7.fhir.r5.elementmodel.LanguageUtils;
 import org.hl7.fhir.r5.elementmodel.Manager;
 import org.hl7.fhir.r5.elementmodel.Manager.FhirFormat;
 import org.hl7.fhir.r5.elementmodel.ValidatedFragment;
+import org.hl7.fhir.r5.fhirpath.FHIRPathEngine;
 import org.hl7.fhir.r5.formats.IParser;
 import org.hl7.fhir.r5.formats.IParser.OutputStyle;
+import org.hl7.fhir.r5.liquid.BaseTableWrapper;
+import org.hl7.fhir.r5.liquid.GlobalObject.GlobalObjectRandomFunction;
+import org.hl7.fhir.r5.liquid.LiquidEngine;
 import org.hl7.fhir.r5.model.Bundle;
 import org.hl7.fhir.r5.model.CanonicalResource;
 import org.hl7.fhir.r5.model.CodeSystem;
 import org.hl7.fhir.r5.model.ConceptMap;
+import org.hl7.fhir.r5.model.DateTimeType;
 import org.hl7.fhir.r5.model.OperationOutcome;
 import org.hl7.fhir.r5.model.Resource;
+import org.hl7.fhir.r5.model.StringType;
 import org.hl7.fhir.r5.model.StructureDefinition;
 import org.hl7.fhir.r5.model.StructureMap;
 import org.hl7.fhir.r5.model.ValueSet;
+import org.hl7.fhir.r5.profilemodel.gen.PECodeGenerator;
+import org.hl7.fhir.r5.profilemodel.gen.PECodeGenerator.ExtensionPolicy;
 import org.hl7.fhir.r5.renderers.spreadsheets.CodeSystemSpreadsheetGenerator;
 import org.hl7.fhir.r5.renderers.spreadsheets.ConceptMapSpreadsheetGenerator;
 import org.hl7.fhir.r5.renderers.spreadsheets.StructureDefinitionSpreadsheetGenerator;
 import org.hl7.fhir.r5.renderers.spreadsheets.ValueSetSpreadsheetGenerator;
 import org.hl7.fhir.r5.terminologies.CodeSystemUtilities;
+import org.hl7.fhir.r5.terminologies.client.TerminologyClientManager.InternalLogEvent;
 import org.hl7.fhir.r5.terminologies.utilities.TerminologyCache;
+import org.hl7.fhir.r5.testfactory.TestDataFactory;
+import org.hl7.fhir.r5.testfactory.TestDataHostServices;
+import org.hl7.fhir.r5.utils.validation.constants.ReferenceValidationPolicy;
 import org.hl7.fhir.utilities.FhirPublication;
 import org.hl7.fhir.utilities.SystemExitManager;
 import org.hl7.fhir.utilities.TextFile;
@@ -56,12 +75,23 @@ import org.hl7.fhir.utilities.i18n.LanguageFileProducer.LanguageProducerSession;
 import org.hl7.fhir.utilities.i18n.LanguageFileProducer.TranslationUnit;
 import org.hl7.fhir.utilities.i18n.PoGetTextProducer;
 import org.hl7.fhir.utilities.i18n.XLIFFProducer;
+import org.hl7.fhir.utilities.json.model.JsonObject;
+import org.hl7.fhir.utilities.json.parser.JsonParser;
 import org.hl7.fhir.utilities.npm.FilesystemPackageCacheManager;
 import org.hl7.fhir.utilities.npm.NpmPackage;
 import org.hl7.fhir.utilities.validation.ValidationMessage;
-import org.hl7.fhir.validation.*;
+import org.hl7.fhir.validation.IgLoader;
+import org.hl7.fhir.validation.ResourceChecker;
+import org.hl7.fhir.validation.ValidationEngine;
+import org.hl7.fhir.validation.ValidationRecord;
+import org.hl7.fhir.validation.ValidatorUtils;
 import org.hl7.fhir.validation.ValidatorUtils.SourceFile;
-import org.hl7.fhir.validation.cli.model.*;
+import org.hl7.fhir.validation.cli.model.CliContext;
+import org.hl7.fhir.validation.cli.model.FileInfo;
+import org.hl7.fhir.validation.cli.model.ValidatedFragments;
+import org.hl7.fhir.validation.cli.model.ValidationOutcome;
+import org.hl7.fhir.validation.cli.model.ValidationRequest;
+import org.hl7.fhir.validation.cli.model.ValidationResponse;
 import org.hl7.fhir.validation.cli.renderers.CSVRenderer;
 import org.hl7.fhir.validation.cli.renderers.CompactRenderer;
 import org.hl7.fhir.validation.cli.renderers.DefaultRenderer;
@@ -71,33 +101,57 @@ import org.hl7.fhir.validation.cli.renderers.ValidationOutputRenderer;
 import org.hl7.fhir.validation.cli.utils.Common;
 import org.hl7.fhir.validation.cli.utils.EngineMode;
 import org.hl7.fhir.validation.cli.utils.VersionSourceInformation;
+import org.hl7.fhir.validation.instance.advisor.BasePolicyAdvisorForFullValidation;
+import org.hl7.fhir.validation.instance.advisor.JsonDrivenPolicyAdvisor;
+import org.hl7.fhir.validation.instance.advisor.TextDrivenPolicyAdvisor;
 
 public class ValidationService {
 
   private final SessionCache sessionCache;
   private String runDate;
 
+  private final Map<String, ValidationEngine> baseEngines = new ConcurrentHashMap<>();
+
+  public void putBaseEngine(String key, CliContext cliContext) throws IOException, URISyntaxException {
+    if (cliContext.getSv() == null) {
+      throw new IllegalArgumentException("Cannot create a base engine without an explicit version");
+    }
+    String definitions = VersionUtilities.packageForVersion(cliContext.getSv()) + "#" + VersionUtilities.getCurrentVersion(cliContext.getSv());
+
+    ValidationEngine baseEngine = buildValidationEngine(cliContext, definitions, new TimeTracker());
+    baseEngines.put(key, baseEngine);
+  }
+
+  public ValidationEngine getBaseEngine(String key) {
+    return baseEngines.get(key);
+  }
+
+  public Set<String> getBaseEngineKeys() { return baseEngines.keySet(); }
+
+  public boolean hasBaseEngineForKey(String key) { return baseEngines.containsKey(key); }
+
   public ValidationService() {
     sessionCache = new PassiveExpiringSessionCache();
     runDate = new SimpleDateFormat("hh:mm:ss", new Locale("en", "US")).format(new Date());
   }
+
+
 
   public ValidationService(SessionCache cache) {
     this.sessionCache = cache;
   }
 
   public ValidationResponse validateSources(ValidationRequest request) throws Exception {
-    if (request.getCliContext().getSv() == null) {
-      String sv = determineVersion(request.getCliContext(), request.sessionId);
-      request.getCliContext().setSv(sv);
-    }
-
-    String definitions = VersionUtilities.packageForVersion(request.getCliContext().getSv()) + "#" + VersionUtilities.getCurrentVersion(request.getCliContext().getSv());
 
     TimeTracker timeTracker = new TimeTracker();
-    String sessionId = initializeValidator(request.getCliContext(), definitions, timeTracker, request.sessionId);
-    ValidationEngine validator = sessionCache.fetchSessionValidatorEngine(sessionId);
+    String sessionId = initializeValidator(request.getCliContext(), null, timeTracker, request.sessionId);
+    ValidationEngine validationEngine = sessionCache.fetchSessionValidatorEngine(sessionId);
 
+    /* Cached validation engines already have expensive setup like loading definitions complete. But it wouldn't make
+       sense to rebuild a whole engine to change the language, so we manually change it here.
+     */
+    validationEngine.setLanguage(request.getCliContext().getLang());
+    validationEngine.setLocale(request.getCliContext().getLocale());
     if (request.getCliContext().getProfiles().size() > 0) {
       System.out.println("  .. validate " + request.listSourceFiles() + " against " + request.getCliContext().getProfiles().toString());
     } else {
@@ -108,7 +162,7 @@ public class ValidationService {
 
     for (FileInfo fileToValidate : request.getFilesToValidate()) {
       if (fileToValidate.getFileType() == null) {
-        Manager.FhirFormat format = ResourceChecker.checkIsResource(validator.getContext(),
+        Manager.FhirFormat format = ResourceChecker.checkIsResource(validationEngine.getContext(),
           false,
           fileToValidate.getFileContent().getBytes(),
           fileToValidate.getFileName(),
@@ -125,7 +179,7 @@ public class ValidationService {
             new FileInfo(fileToValidate.getFileName(), fileToValidate.getFileContent(), null));
           response.addOutcome(outcome);
       } else {
-        ValidatedFragments validatedFragments = validator.validateAsFragments(fileToValidate.getFileContent().getBytes(), Manager.FhirFormat.getFhirFormat(fileToValidate.getFileType()),
+        ValidatedFragments validatedFragments = validationEngine.validateAsFragments(fileToValidate.getFileContent().getBytes(), Manager.FhirFormat.getFhirFormat(fileToValidate.getFileType()),
           request.getCliContext().getProfiles(), messages);
 
         List<ValidationOutcome> validationOutcomes = getValidationOutcomesFromValidatedFragments(fileToValidate, validatedFragments);
@@ -136,6 +190,7 @@ public class ValidationService {
         if (request.getCliContext().isShowTimes()) {
           response.getValidationTimes().put(fileToValidate.getFileName(), validatedFragments.getValidationTime());
         }
+        
       }
     }
 
@@ -182,7 +237,7 @@ public class ValidationService {
     return outcome;
   }
 
-  public VersionSourceInformation scanForVersions(CliContext cliContext) throws Exception {
+  public VersionSourceInformation scanForVersions(CliContext cliContext) throws IOException {
     VersionSourceInformation versions = new VersionSourceInformation();
     IgLoader igLoader = new IgLoader(
       new FilesystemPackageCacheManager.Builder().build(),
@@ -221,12 +276,13 @@ public class ValidationService {
         PrintStream dst = null;
         ValidationOutputRenderer renderer = makeValidationOutputRenderer(cliContext);
         renderer.setCrumbTrails(validator.isCrumbTrails());
+        renderer.setShowMessageIds(validator.isShowMessageIds());
         renderer.setRunDate(runDate);
         if (renderer.isSingleFile()) {
           if (cliContext.getOutput() == null) {
             dst = System.out;
           } else {
-            dst = new PrintStream(ManagedFileAccess.outStream(cliContext.getOutput()));
+            dst = new PrintStream(ManagedFileAccess.outStream(Utilities.path(cliContext.getOutput())));
           }
           renderer.setOutput(dst);
         } else {
@@ -268,6 +324,19 @@ public class ValidationService {
           String html = new HTMLOutputGenerator(records).generate(System.currentTimeMillis() - start);
           TextFile.stringToFile(html, cliContext.getHtmlOutput());
           System.out.println("HTML Summary in " + cliContext.getHtmlOutput());
+        }
+
+        if (cliContext.isShowTerminologyRouting()) {
+          System.out.println("");
+          System.out.println("Terminology Routing Dump ---------------------------------------");
+          if (validator.getContext().getTxClientManager().getInternalLog().isEmpty()) {
+            System.out.println("(nothing happened)");            
+          } else {
+            for (InternalLogEvent log : validator.getContext().getTxClientManager().getInternalLog()) {
+              System.out.println(log.getMessage()+" -> "+log.getServer()+" (for VS "+log.getVs()+" with systems '"+log.getSystems()+"', choices = '"+log.getChoices()+"')");
+            }
+          }
+          validator.getContext().getTxClientManager().getInternalLog().clear();
         }
       }
       if (watch != ValidatorWatchMode.NONE) {
@@ -475,14 +544,34 @@ public class ValidationService {
       if (sessionId != null) {
         System.out.println("No such cached session exists for session id " + sessionId + ", re-instantiating validator.");
       }
-        System.out.println("Building new validator engine from CliContext");
-      ValidationEngine validator = buildValidationEngine(cliContext, definitions, tt);
-      sessionId = sessionCache.cacheSession(validator);
+      sessionCache.cleanUp();
+      if (cliContext.getSv() == null) {
+        String sv = determineVersion(cliContext);
+        cliContext.setSv(sv);
+      }
+      final String engineDefinitions = definitions != null ? definitions : VersionUtilities.packageForVersion(cliContext.getSv()) + "#" + VersionUtilities.getCurrentVersion(cliContext.getSv());
+
+      ValidationEngine validationEngine = getValidationEngineFromCliContext(cliContext, engineDefinitions, tt);
+      sessionId = sessionCache.cacheSession(validationEngine);
       System.out.println("Cached new session. Cache size = " + sessionCache.getSessionIds().size());
+
     } else {
       System.out.println("Cached session exists for session id " + sessionId + ", returning stored validator session id. Cache size = " + sessionCache.getSessionIds().size());
     }
     return sessionId;
+  }
+
+  private ValidationEngine getValidationEngineFromCliContext(CliContext cliContext, String definitions, TimeTracker tt) throws Exception {
+    ValidationEngine validationEngine;
+    if (cliContext.getBaseEngine() != null && hasBaseEngineForKey(cliContext.getBaseEngine())) {
+      validationEngine = new ValidationEngine(getBaseEngine(cliContext.getBaseEngine()));
+    } else {
+      if (definitions == null) {
+        throw new IllegalArgumentException("Cannot create a validator engine (definitions == null)");
+      }
+      validationEngine = buildValidationEngine(cliContext, definitions, tt);
+    }
+    return validationEngine;
   }
 
   protected ValidationEngine.ValidationEngineBuilder getValidationEngineBuilder() {
@@ -490,7 +579,7 @@ public class ValidationService {
   }
 
   @Nonnull
-  protected ValidationEngine buildValidationEngine( CliContext cliContext, String definitions, TimeTracker timeTracker) throws IOException, URISyntaxException {
+  protected ValidationEngine buildValidationEngine(CliContext cliContext, String definitions, TimeTracker timeTracker) throws IOException, URISyntaxException {
     System.out.print("  Load FHIR v" + cliContext.getSv() + " from " + definitions);
     ValidationEngine validationEngine = getValidationEngineBuilder().withTHO(false).withVersion(cliContext.getSv()).withTimeTracker(timeTracker).withUserAgent(Common.getValidatorUserAgent()).fromSource(definitions);
 
@@ -499,10 +588,18 @@ public class ValidationService {
     System.out.println(" - " + validationEngine.getContext().countAllCaches() + " resources (" + timeTracker.milestone() + ")");
 
     loadIgsAndExtensions(validationEngine, cliContext, timeTracker);
-    if (validationEngine.getContext().getTxCache() == null) {
+    if (cliContext.getTxCache() != null) {
+      TerminologyCache cache = new TerminologyCache(new Object(), cliContext.getTxCache());
+      validationEngine.getContext().initTxCache(cache);
+    }
+    if (validationEngine.getContext().getTxCache() == null || validationEngine.getContext().getTxCache().getFolder() == null) {
       System.out.println("  No Terminology Cache");      
     } else {
       System.out.println("  Terminology Cache at "+validationEngine.getContext().getTxCache().getFolder());
+      if (cliContext.isClearTxCache()) {
+        System.out.println("  Terminology Cache Entries Cleaned out");
+        validationEngine.getContext().getTxCache().clear();
+      }
     }
     System.out.print("  Get set... ");
     validationEngine.setQuestionnaireMode(cliContext.getQuestionnaireMode());
@@ -533,17 +630,41 @@ public class ValidationService {
     validationEngine.setWantInvariantInMessage(cliContext.isWantInvariantsInMessages());
     validationEngine.setSecurityChecks(cliContext.isSecurityChecks());
     validationEngine.setCrumbTrails(cliContext.isCrumbTrails());
+    validationEngine.setShowMessageIds(cliContext.isShowMessageIds());
     validationEngine.setForPublication(cliContext.isForPublication());
     validationEngine.setShowTimes(cliContext.isShowTimes());
     validationEngine.setAllowExampleUrls(cliContext.isAllowExampleUrls());
+    validationEngine.setAiService(cliContext.getAIService());
+    ReferenceValidationPolicy refpol = ReferenceValidationPolicy.CHECK_VALID;
     if (!cliContext.isDisableDefaultResourceFetcher()) {
       StandAloneValidatorFetcher fetcher = new StandAloneValidatorFetcher(validationEngine.getPcm(), validationEngine.getContext(), validationEngine);
       validationEngine.setFetcher(fetcher);
       validationEngine.getContext().setLocator(fetcher);
       validationEngine.setPolicyAdvisor(fetcher);
+      if (cliContext.isCheckReferences()) {
+        fetcher.setReferencePolicy(ReferenceValidationPolicy.CHECK_VALID);
+      } else {
+        fetcher.setReferencePolicy(ReferenceValidationPolicy.IGNORE);        
+      }
+      fetcher.setResolutionContext(cliContext.getResolutionContext());
+    } else {
+      DisabledValidationPolicyAdvisor fetcher = new DisabledValidationPolicyAdvisor();
+      validationEngine.setPolicyAdvisor(fetcher);
+      refpol = ReferenceValidationPolicy.CHECK_TYPE_IF_EXISTS;
+    }
+    if (cliContext.getAdvisorFile() != null) {
+      if (cliContext.getAdvisorFile().endsWith(".json")) {
+        validationEngine.getPolicyAdvisor().setPolicyAdvisor(new JsonDrivenPolicyAdvisor(validationEngine.getPolicyAdvisor().getPolicyAdvisor(), ManagedFileAccess.file(cliContext.getAdvisorFile())));
+      } else {
+        validationEngine.getPolicyAdvisor().setPolicyAdvisor(new TextDrivenPolicyAdvisor(validationEngine.getPolicyAdvisor().getPolicyAdvisor(), ManagedFileAccess.file(cliContext.getAdvisorFile())));          
+      }
+    } else {
+      validationEngine.getPolicyAdvisor().setPolicyAdvisor(new BasePolicyAdvisorForFullValidation(validationEngine.getPolicyAdvisor() == null ? refpol : validationEngine.getPolicyAdvisor().getReferencePolicy()));
     }
     validationEngine.getBundleValidationRules().addAll(cliContext.getBundleValidationRules());
     validationEngine.setJurisdiction(CodeSystemUtilities.readCoding(cliContext.getJurisdiction()));
+    validationEngine.setUnknownCodeSystemsCauseErrors(cliContext.isUnknownCodeSystemsCauseErrors());
+    validationEngine.setNoExperimentalContent(cliContext.isNoExperimentalContent());
     TerminologyCache.setNoCaching(cliContext.isNoInternalCaching());
     validationEngine.prepare(); // generate any missing snapshots
     System.out.println(" go (" + timeTracker.milestone() + ")");
@@ -568,12 +689,7 @@ public class ValidationService {
     System.out.println("  Package Summary: "+ validationEngine.getContext().loadedPackageSummary());
   }
 
-
-  public String determineVersion(CliContext cliContext) throws Exception {
-    return determineVersion(cliContext, null);
-  }
-
-  public String determineVersion(CliContext cliContext, String sessionId) throws Exception {
+  public String determineVersion(CliContext cliContext) throws IOException {
     if (cliContext.getMode() != EngineMode.VALIDATION && cliContext.getMode() != EngineMode.INSTALL) {
       return "5.0";
     }
@@ -592,7 +708,7 @@ public class ValidationService {
       System.out.println("-> use version " + versions.version());
       return versions.version();
     }
-    throw new Exception("-> Multiple versions found. Specify a particular version using the -version parameter");
+    throw new IllegalArgumentException("-> Multiple versions found. Specify a particular version using the -version parameter");
   }
 
   public void generateSpreadsheet(CliContext cliContext, ValidationEngine validator) throws Exception {
@@ -756,6 +872,105 @@ public class ValidationService {
           validator.handleOutput(sd, filename, validator.getVersion());
         }
       }
+    }
+  }
+
+  public void codeGen(CliContext cliContext, ValidationEngine validationEngine) throws IOException {
+    boolean ok = true;
+    if (cliContext.getProfiles().isEmpty()) {
+      System.out.println("Must specify at least one profile to generate code for with -profile or -profiles ");
+      ok = false;
+    }
+    if (cliContext.getPackageName() == null) {
+      System.out.println("Must provide a Java package name (-package-name)");
+      ok = false;
+    }
+    if (cliContext.getSv() == null) {
+      System.out.println("Must specify a version (-version)");
+      ok = false;
+    } else if (!VersionUtilities.isR4Ver(cliContext.getSv()) && !VersionUtilities.isR5Ver(cliContext.getSv())) {      
+      System.out.println("Only versions 4 and 5 are supported (-version)");
+      ok = false;
+    }
+    if (cliContext.getOutput() == null) {
+      System.out.println("Must provide an output directory (-output)");
+      ok = false;
+    }
+    Utilities.createDirectory(cliContext.getOutput());
+    if (ok) {
+      PECodeGenerator gen = new PECodeGenerator(validationEngine.getContext());
+      gen.setFolder(cliContext.getOutput());
+      gen.setExtensionPolicy(ExtensionPolicy.Complexes);
+      gen.setNarrative(cliContext.getOptions().contains("narrative"));
+      gen.setMeta(cliContext.getOptions().contains("meta"));
+      gen.setLanguage(Locale.getDefault().toLanguageTag());
+      gen.setContained(cliContext.getOptions().contains("contained"));
+      gen.setKeyElementsOnly(!cliContext.getOptions().contains("all-elements"));
+      gen.setGenDate(new SimpleDateFormat().format(new Date()));
+      gen.setPkgName(cliContext.getPackageName());
+      if (VersionUtilities.isR4Ver(cliContext.getSv())) {
+        gen.setVersion("r4");
+      } else {
+        gen.setVersion("r5");
+      }
+
+      for (String profile : cliContext.getProfiles()) {
+        if (profile.endsWith("*")) {
+          for (StructureDefinition sd : validationEngine.getContext().fetchResourcesByType(StructureDefinition.class)) {
+            if (sd.getUrl().startsWith(profile.replace("*", ""))) {
+              gen.setCanonical(sd.getUrl());
+              System.out.print("Generate for "+sd.getUrl());
+              String s = gen.execute();
+              System.out.println(": "+s);
+            }
+          }
+        } else {
+          gen.setCanonical(profile);
+          System.out.print("Generate for "+profile);
+          String s = gen.execute();
+          System.out.println(": "+s);
+        }
+      }
+      System.out.println("Done");
+    }
+  }
+
+  public void instanceFactory(CliContext cliContext, ValidationEngine validationEngine) throws IOException {
+    boolean ok = true;
+    if (cliContext.getSource() == null) {
+      System.out.println("Must specify a source (-version)");
+      ok = false;
+    } else if (!ManagedFileAccess.file(cliContext.getSource()).exists()) {      
+      System.out.println("Factory source '"+cliContext.getSource()+"' not found");
+      ok = false;
+    }
+
+    if (ok) {
+      System.out.println("Preparing to execute");
+              
+      FHIRPathEngine fpe = new FHIRPathEngine(validationEngine.getContext());
+      TestDataHostServices hs = new TestDataHostServices(validationEngine.getContext(), new DateTimeType(new Date()), new StringType(VersionUtilities.getSpecUrl(validationEngine.getContext().getVersion())));
+      hs.registerFunction(new GlobalObjectRandomFunction());
+      hs.registerFunction(new BaseTableWrapper.TableColumnFunction());
+      hs.registerFunction(new BaseTableWrapper.TableDateColumnFunction());
+      hs.registerFunction(new TestDataFactory.CellLookupFunction());
+      hs.registerFunction(new TestDataFactory.TableLookupFunction());
+      fpe.setHostServices(hs);
+      LiquidEngine liquid = new LiquidEngine(validationEngine.getContext(), hs);
+      
+      String path = Utilities.getDirectoryForFile(cliContext.getSource());
+      String log = Utilities.path(path, "log");
+      Utilities.createDirectory(log);
+                  
+      JsonObject json = JsonParser.parseObjectFromFile(cliContext.getSource());
+      for (JsonObject fact : json.forceArray("factories").asJsonObjects()) {
+        TestDataFactory tdf = new TestDataFactory(validationEngine.getContext(), fact, liquid, fpe, "http://hl7.org/fhir/test", path, log);
+        tdf.setTesting(true); // no randomness
+        System.out.println("Execute Test Data Factory '"+tdf.getName()+"'. Log in "+Utilities.path(log, tdf.statedLog()));
+        tdf.execute();
+      }
+
+      System.out.println("Done");
     }
   }
 

@@ -757,7 +757,9 @@ public class ValidationMessage implements Comparator<ValidationMessage>, Compara
 
   @Override
   public boolean equals(Object o) {
-    return (this.getMessage() != null && this.getMessage().equals(((ValidationMessage)o).getMessage())) && (this.getLocation() != null && this.getLocation().equals(((ValidationMessage)o).getLocation()));
+    return (
+      this.getMessage() != null && this.getMessage().equals(((ValidationMessage)o).getMessage()))
+      && (this.getLocation() != null && this.getLocation().equals(((ValidationMessage)o).getLocation()));
   }
 
   @Override
@@ -933,8 +935,9 @@ public class ValidationMessage implements Comparator<ValidationMessage>, Compara
     return invId;
   }
 
-  public void setInvId(String invId) {
+  public ValidationMessage setInvId(String invId) {
     this.invId = invId;
+    return this;
   }
 
   public String getComment() {

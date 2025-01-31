@@ -40,7 +40,8 @@ public class OperationDefinitionRenderer extends TerminologyRenderer {
       genSummaryTable(status, x, (OperationDefinition) r.getBase());    
       render(status, x, (OperationDefinition) r.getBase());      
     } else {
-      throw new Error("OperationDefinitionRenderer only renders native resources directly");
+      // the intention is to change this in the future
+      x.para().tx("OperationDefinitionRenderer only renders native resources directly");
     }
   }
    
@@ -85,9 +86,11 @@ public class OperationDefinitionRenderer extends TerminologyRenderer {
       } else { 
         p.ah(context.prefixLocalHref(sd.getWebPath())).tx(sd.present());                  
       }       
-    } 
-    x.para().tx(context.formatPhrase(RenderingContext.GENERAL_PARS)); 
-    XhtmlNode tbl = x.table( "grid"); 
+    }
+
+    x.h3().tx(context.formatPhrase(RenderingContext.GENERAL_PARS));
+    //x.para().tx(context.formatPhrase(RenderingContext.GENERAL_PARS)); 
+    XhtmlNode tbl = x.table( "grid", false); 
     XhtmlNode tr = tbl.tr(); 
     tr.td().b().tx(context.formatPhrase(RenderingContext.OP_DEF_USE)); 
     tr.td().b().tx(context.formatPhrase(RenderingContext.GENERAL_NAME)); 

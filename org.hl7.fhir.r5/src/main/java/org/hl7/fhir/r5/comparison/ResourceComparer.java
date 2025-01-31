@@ -202,7 +202,7 @@ public class ResourceComparer {
         s = s + "<td><a href=\""+getId()+".html\">Failed<a></td>";
         color = COLOR_ISSUE;
       }
-      s = s + "<td>"+(e != null ? Utilities.escapeXml(e.getMessage()) : "")+"</td>";
+      s = s + "<td colspan=\"3\">"+(e != null ? Utilities.escapeXml(e.getMessage()) : "")+"</td>";
       return "<tr style=\"background-color: "+color+"\">"+s+"</tr>\r\n";
     }
 
@@ -252,7 +252,7 @@ public class ResourceComparer {
 
   public XhtmlNode renderErrors(ResourceComparison csc) {
     XhtmlNode div = new XhtmlNode(NodeType.Element, "div");
-    XhtmlNode tbl = div.table("grid");
+    XhtmlNode tbl = div.table("grid", false);
     for (ValidationMessage vm : csc.messages) {
       XhtmlNode tr = tbl.tr();
       tr.style("background-color: "+colorForLevel(vm.getLevel()));

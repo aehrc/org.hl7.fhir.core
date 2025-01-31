@@ -51,6 +51,7 @@ import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.exceptions.TerminologyServiceException;
 import org.hl7.fhir.r5.context.IWorkerContext.OIDDefinition;
 import org.hl7.fhir.r5.context.IWorkerContext.OIDDefinitionComparer;
+import org.hl7.fhir.r5.context.IWorkerContext.ITerminologyOperationDetails;
 import org.hl7.fhir.r5.elementmodel.Element;
 import org.hl7.fhir.r5.formats.IParser;
 import org.hl7.fhir.r5.formats.ParserType;
@@ -109,6 +110,10 @@ import javax.annotation.Nonnull;
 
 public interface IWorkerContext {
 
+  public interface ITerminologyOperationDetails {
+
+    public void seeSupplement(CodeSystem supp);
+  }
   /**
    @deprecated This interface only exists to provide backward compatibility for the following two projects:
    <a href="https://github.com/cqframework/clinical-reasoning">clinical-reasoning</a>
@@ -139,13 +144,15 @@ public interface IWorkerContext {
     private String url;
     private String version;
     private String packageSrc;
-    protected OIDDefinition(String type, String oid, String url, String version, String packageSrc) {
+    private String status;
+    protected OIDDefinition(String type, String oid, String url, String version, String status, String packageSrc) {
       super();
       this.type = type;
       this.oid = oid;
       this.url = url;
       this.version = version == null ? "" : version;
       this.packageSrc = packageSrc;
+      this.status = status;
     }
     public String getType() {
       return type;
@@ -158,6 +165,9 @@ public interface IWorkerContext {
     }
     public String getVersion() {
       return version;
+    }
+    public String getStatus() {
+      return status;
     }
     public String getPackageSrc() {
       return packageSrc;
@@ -480,6 +490,8 @@ public interface IWorkerContext {
    */
   public ValueSetExpansionOutcome expandVS(ValueSet source, boolean cacheOk, boolean heiarchical);
 
+  public ValueSetExpansionOutcome expandVS(ValueSet source, boolean cacheOk, boolean heiarchical, int count);
+
   /**
    * ValueSet Expansion - see $expand
    *  
@@ -488,6 +500,8 @@ public interface IWorkerContext {
    */
   public ValueSetExpansionOutcome expandVS(ValueSet source, boolean cacheOk, boolean heiarchical, boolean incompleteOk);
 
+  public ValueSetExpansionOutcome expandVS(String uri, boolean cacheOk, boolean heiarchical, int count); // set to 0 to just check existence
+  
   /**
    * ValueSet Expansion - see $expand, but resolves the binding first
    *  
@@ -506,7 +520,7 @@ public interface IWorkerContext {
    * @return
    * @throws FHIRException 
    */
-  ValueSetExpansionOutcome expandVS(ConceptSetComponent inc, boolean hierarchical, boolean noInactive) throws TerminologyServiceException;
+  ValueSetExpansionOutcome expandVS(ITerminologyOperationDetails opCtxt, ConceptSetComponent inc, boolean hierarchical, boolean noInactive) throws TerminologyServiceException;
 
   /**
    * get/set the locale used when creating messages

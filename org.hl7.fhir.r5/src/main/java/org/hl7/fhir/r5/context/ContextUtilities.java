@@ -22,13 +22,16 @@ import org.hl7.fhir.r5.model.CodeSystem.ConceptPropertyComponent;
 import org.hl7.fhir.r5.model.ElementDefinition.ElementDefinitionBindingComponent;
 import org.hl7.fhir.r5.model.NamingSystem.NamingSystemIdentifierType;
 import org.hl7.fhir.r5.model.NamingSystem.NamingSystemUniqueIdComponent;
+import org.hl7.fhir.r5.model.Parameters.ParametersParameterComponent;
 import org.hl7.fhir.r5.model.StructureDefinition.StructureDefinitionKind;
 import org.hl7.fhir.r5.model.StructureDefinition.TypeDerivationRule;
 import org.hl7.fhir.r5.model.StructureMap;
 import org.hl7.fhir.r5.utils.ToolingExtensions;
+import org.hl7.fhir.r5.utils.UserDataNames;
 import org.hl7.fhir.r5.utils.XVerExtensionManager;
 import org.hl7.fhir.r5.model.Identifier;
 import org.hl7.fhir.r5.model.NamingSystem;
+import org.hl7.fhir.r5.model.Parameters;
 import org.hl7.fhir.r5.model.StructureDefinition;
 import org.hl7.fhir.utilities.OIDUtils;
 import org.hl7.fhir.utilities.Utilities;
@@ -278,7 +281,7 @@ public class ContextUtilities implements ProfileKnowledgeProvider {
       for (String err : errors) {
         msgs.add(new ValidationMessage(Source.ProfileValidator, IssueType.EXCEPTION, p.getWebPath(), "Error sorting Differential: "+err, ValidationMessage.IssueSeverity.ERROR));
       }
-      pu.generateSnapshot(sd, p, p.getUrl(), sd.getUserString("webroot"), p.getName());
+      pu.generateSnapshot(sd, p, p.getUrl(), sd.getUserString(UserDataNames.render_webroot), p.getName());
       for (ValidationMessage msg : msgs) {
         if ((!ProfileUtilities.isSuppressIgnorableExceptions() && msg.getLevel() == ValidationMessage.IssueSeverity.ERROR) || msg.getLevel() == ValidationMessage.IssueSeverity.FATAL) {
           if (!msg.isIgnorableError()) {
@@ -298,9 +301,9 @@ public class ContextUtilities implements ProfileKnowledgeProvider {
 
   // work around the fact that some Implementation guides were published with old snapshot generators that left invalid snapshots behind.
   private boolean isProfileNeedsRegenerate(StructureDefinition p) {
-    boolean needs = !p.hasUserData("hack.regnerated") && Utilities.existsInList(p.getUrl(), "http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-questionnaireresponse");
+    boolean needs = !p.hasUserData(UserDataNames.SNAPSHOT_regeneration_tracker) && Utilities.existsInList(p.getUrl(), "http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-questionnaireresponse");
     if (needs) {
-      p.setUserData("hack.regnerated", "yes");
+      p.setUserData(UserDataNames.SNAPSHOT_regeneration_tracker, "yes");
     }
     return needs;
   }
@@ -366,7 +369,11 @@ public class ContextUtilities implements ProfileKnowledgeProvider {
   public StructureDefinition fetchByJsonName(String key) {
     for (StructureDefinition sd : context.fetchResourcesByType(StructureDefinition.class)) {
       ElementDefinition ed = sd.getSnapshot().getElementFirstRep();
-      if (sd.getKind() == StructureDefinitionKind.LOGICAL && ed != null && ed.hasExtension(ToolingExtensions.EXT_JSON_NAME, ToolingExtensions.EXT_JSON_NAME_DEPRECATED) && 
+      if (/*sd.getKind() == StructureDefinitionKind.LOGICAL && */ 
+          // this is turned off because it's valid to use a FHIR type directly in
+          // an extension of this kind, and that can't be a logical model. Any profile on
+          // a type is acceptable as long as it has the json name on it  
+          ed != null && ed.hasExtension(ToolingExtensions.EXT_JSON_NAME, ToolingExtensions.EXT_JSON_NAME_DEPRECATED) && 
           key.equals(ToolingExtensions.readStringExtension(ed, ToolingExtensions.EXT_JSON_NAME, ToolingExtensions.EXT_JSON_NAME_DEPRECATED))) {
         return sd;
       }
@@ -472,6 +479,35 @@ public class ContextUtilities implements ProfileKnowledgeProvider {
   public String getCanonicalForDefaultContext() {
     // TODO Auto-generated method stub
     return null;
+  }
+
+  public String pinValueSet(String valueSet) {
+    return pinValueSet(valueSet, context.getExpansionParameters());
+  }
+
+  public String pinValueSet(String value, Parameters expParams) {
+    if (value.contains("|")) {
+      return value;
+    }
+    for (ParametersParameterComponent p : expParams.getParameter()) {
+      if ("valueset-version".equals(p.getName())) {
+        String s = p.getValue().primitiveValue();
+        if (s.startsWith(value+"|")) {
+          return s;
+        }
+      }
+    }
+    return value;
+  }
+
+  public List<StructureDefinition> allBaseStructures() {
+    List<StructureDefinition> res = new ArrayList<>();
+    for (StructureDefinition sd : allStructures()) {
+      if (sd.getDerivation() == TypeDerivationRule.SPECIALIZATION && sd.getKind() != StructureDefinitionKind.LOGICAL) {
+        res.add(sd);
+      }
+    }
+    return res;
   }
 
 }

@@ -318,7 +318,7 @@ public class IgLoader implements IValidationEngineLoader {
 
   public void scanForIgVersion(String src,
                                boolean recursive,
-                               VersionSourceInformation versions) throws Exception {
+                               VersionSourceInformation versions) throws IOException {
     Map<String, ByteProvider> source = loadIgSourceForVersion(src, recursive, true, versions);
     if (source != null) {
       if (source.containsKey("version.info")) {
@@ -432,7 +432,7 @@ public class IgLoader implements IValidationEngineLoader {
 
   private InputStream fetchFromUrlSpecific(String source, boolean optional) throws FHIRException, IOException {
     try {
-      HTTPResult res = ManagedWebAccess.get(source + "?nocache=" + System.currentTimeMillis());
+      HTTPResult res = ManagedWebAccess.get(Arrays.asList("web"), source + "?nocache=" + System.currentTimeMillis());
       res.checkThrowException();
       return new ByteArrayInputStream(res.getContent());
     } catch (IOException e) {
@@ -499,10 +499,12 @@ public class IgLoader implements IValidationEngineLoader {
   private Map<String, ByteProvider> fetchByPackage(String src, boolean loadInContext) throws FHIRException, IOException {
     NpmPackage pi;
     
-    InputStream stream = directProvider.fetchByPackage(src);
-    if (stream != null) {
-      pi = NpmPackage.fromPackage(stream);
-      return loadPackage(pi, loadInContext);
+    if (directProvider != null) {
+      InputStream stream = directProvider.fetchByPackage(src);
+      if (stream != null) {
+        pi = NpmPackage.fromPackage(stream);
+        return loadPackage(pi, loadInContext);
+      }
     }
     String id = src;
     String version = null;
@@ -518,9 +520,9 @@ public class IgLoader implements IValidationEngineLoader {
       if (pi != null)
         System.out.println("   ... Using version " + pi.version());
     } else
-      pi = getPackageCacheManager().loadPackageFromCacheOnly(id, version);
+      pi = getPackageCacheManager().loadPackage(id, version);
     if (pi == null) {
-      return resolvePackage(id, version, loadInContext);
+      throw new FHIRException("Unable to find package "+src);
     } else
       return loadPackage(pi, loadInContext);
   }
@@ -583,12 +585,12 @@ public class IgLoader implements IValidationEngineLoader {
   private byte[] fetchFromUrlSpecific(String source, String contentType, boolean optional, List<String> errors) throws FHIRException, IOException {
     try {
       try {
-        // try with cache-busting option and then try withhout in case the server doesn't support that
-        HTTPResult res = ManagedWebAccess.get(source + "?nocache=" + System.currentTimeMillis(), contentType);
+        // try with cache-busting option and then try without in case the server doesn't support that
+        HTTPResult res = ManagedWebAccess.get(Arrays.asList("web"),source + "?nocache=" + System.currentTimeMillis(), contentType);
         res.checkThrowException();
         return res.getContent();
       } catch (Exception e) {
-        HTTPResult res = ManagedWebAccess.get(source, contentType);
+        HTTPResult res = ManagedWebAccess.get(Arrays.asList("web"), source, contentType);
         res.checkThrowException();
         return res.getContent();
       }
@@ -670,9 +672,9 @@ public class IgLoader implements IValidationEngineLoader {
       if (pi != null)
         System.out.println("   ... Using version " + pi.version());
     } else
-      pi = getPackageCacheManager().loadPackageFromCacheOnly(id, version);
+      pi = getPackageCacheManager().loadPackage(id, version);
     if (pi == null) {
-      return resolvePackageForVersion(id, version);
+      throw new FHIRException("Unable to resolve package "+src);
     } else {
       return pi.fhirVersion();
     }

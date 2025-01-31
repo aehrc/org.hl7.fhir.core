@@ -51,11 +51,18 @@ public abstract class XhtmlFluent {
   public XhtmlNode h4() {
     return addTag("h4");
   }
-  
+
   public XhtmlNode table(String clss) {
+    return table(clss, false);
+  }
+  
+  public XhtmlNode table(String clss, boolean forPresentation) {
     XhtmlNode res = addTag("table");
     if (!Utilities.noString(clss))
       res.setAttribute("class", clss);
+    if (forPresentation) {
+      res.setAttribute("role", "presentation");
+    }
     return res;
   }
   
@@ -117,6 +124,10 @@ public abstract class XhtmlFluent {
 
   public XhtmlNode ul() {
     return addTag("ul");
+  }
+
+  public XhtmlNode ol() {
+    return addTag("ol");
   }
 
   public XhtmlNode li() {

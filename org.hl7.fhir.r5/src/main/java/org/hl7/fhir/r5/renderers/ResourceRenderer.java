@@ -15,6 +15,7 @@ import org.hl7.fhir.r5.model.CanonicalResource;
 import org.hl7.fhir.r5.model.CanonicalType;
 import org.hl7.fhir.r5.model.CodeSystem;
 import org.hl7.fhir.r5.model.CodeSystem.ConceptDefinitionComponent;
+import org.hl7.fhir.r5.model.Constants;
 import org.hl7.fhir.r5.model.ContactDetail;
 import org.hl7.fhir.r5.model.ContactPoint;
 import org.hl7.fhir.r5.model.ContactPoint.ContactPointSystem;
@@ -35,8 +36,6 @@ import org.hl7.fhir.r5.terminologies.CodeSystemUtilities;
 import org.hl7.fhir.r5.utils.EOperationOutcome;
 import org.hl7.fhir.r5.utils.ToolingExtensions;
 import org.hl7.fhir.r5.utils.XVerExtensionManager;
-import org.hl7.fhir.utilities.CommaSeparatedStringBuilder;
-
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.xhtml.HierarchicalTableGenerator;
 import org.hl7.fhir.utilities.xhtml.HierarchicalTableGenerator.Piece;
@@ -52,6 +51,7 @@ public abstract class ResourceRenderer extends DataRenderer {
 
   protected XVerExtensionManager xverManager;
   protected boolean multiLangMode;
+  protected boolean inner;
   
   
   public ResourceRenderer(RenderingContext context) {
@@ -64,6 +64,19 @@ public abstract class ResourceRenderer extends DataRenderer {
 
   public ResourceRenderer setMultiLangMode(boolean multiLangMode) {
     this.multiLangMode = multiLangMode;
+    return this;
+  }
+
+  public boolean renderingUsesValidation() {
+    return false;
+  }
+  
+  public boolean isInner() {
+    return inner;
+  }
+
+  public ResourceRenderer setInner(boolean inner) {
+    this.inner = inner;
     return this;
   }
 
@@ -150,6 +163,9 @@ public abstract class ResourceRenderer extends DataRenderer {
   public abstract void buildNarrative(RenderingStatus status, XhtmlNode x, ResourceWrapper r) throws FHIRFormatError, DefinitionException, IOException, FHIRException, EOperationOutcome;
   public abstract String buildSummary(ResourceWrapper r) throws UnsupportedEncodingException, IOException;
     
+  public void buildSummary(RenderingStatus status, XhtmlNode x, ResourceWrapper r) throws UnsupportedEncodingException, IOException {
+    x.tx(buildSummary(r));
+  }
 
   public String canonicalTitle(ResourceWrapper r) {
     if (r.has("title")) {
@@ -161,7 +177,7 @@ public abstract class ResourceRenderer extends DataRenderer {
     if (r.has("id")) {
       return r.primitiveValue("id");
     }
-    return "??";
+    return "?title?";
   }
   
   public void describe(XhtmlNode x, ResourceWrapper r) throws UnsupportedEncodingException, IOException {
@@ -173,8 +189,8 @@ public abstract class ResourceRenderer extends DataRenderer {
   }
 
   public void markLanguage(XhtmlNode x) {
-    x.setAttribute("lang", context.getLocale().toString());
-    x.setAttribute("xml:lang", context.getLocale().toString());
+    x.setAttribute("lang", context.getLocale().toLanguageTag());
+    x.setAttribute("xml:lang", context.getLocale().toLanguageTag());
     x.addTag(0, "hr");
     x.addTag(0, "p").b().tx(context.getLocale().getDisplayName());
     x.addTag(0, "hr");
@@ -245,7 +261,6 @@ public abstract class ResourceRenderer extends DataRenderer {
       actual = type;
     }
     if (actual != null && actual.hasPrimitiveValue()) {
-      System.out.println("displayReference: "+actual);
       if ("#".equals(actual.primitiveValue())) {
         return "this resource";
       } else {
@@ -268,7 +283,7 @@ public abstract class ResourceRenderer extends DataRenderer {
     } else if (id != null) {
       return "id: "+displayIdentifier(id);
     } else {
-      return "??";
+      return "?ref?";
     }
   }
 
@@ -340,12 +355,19 @@ public abstract class ResourceRenderer extends DataRenderer {
       ResourceWithReference rr = resolveReference(actual);
       if (rr == null) {
         String disp = display != null && display.hasPrimitiveValue() ? displayDataType(display) : actual.primitiveValue();
-        x.ah(context.prefixLocalHref(actual.primitiveValue())).tx(disp);
+        if (Utilities.isAbsoluteUrlLinkable(actual.primitiveValue()) || (isLocalReference(actual.primitiveValue()) && !context.isUnknownLocalReferencesNotLinks())) {
+          x.ah(context.prefixLocalHref(actual.primitiveValue())).tx(disp);
+        } else {
+          x.code().tx(disp);
+        }
       } else if (rr.getResource() == null) {
-        String disp = display != null && display.hasPrimitiveValue() ? displayDataType(display) : "??";
+        String disp = display != null && display.hasPrimitiveValue() ? displayDataType(display) : rr.getUrlReference();
+        x.ah(context.prefixLocalHref(rr.getWebPath())).tx(disp);
+      } else if (rr.getResource() != null) {
+        String disp = display != null && display.hasPrimitiveValue() ? displayDataType(display) : RendererFactory.factory(rr.getResource(), context.forContained()).buildSummary(rr.getResource());
         x.ah(context.prefixLocalHref(rr.getWebPath())).tx(disp);
       } else {
-        String disp = display != null && display.hasPrimitiveValue() ? displayDataType(display) : RendererFactory.factory(rr.getResource(), context.forContained()).buildSummary(rr.getResource());
+        String disp = display != null && display.hasPrimitiveValue() ? displayDataType(display) : "?rref2?";
         x.ah(context.prefixLocalHref(rr.getWebPath())).tx(disp);
       }
     } else if (display != null && id != null) {
@@ -359,10 +381,27 @@ public abstract class ResourceRenderer extends DataRenderer {
       x.tx("Identifier: ");
       renderIdentifier(status, x, id);
     } else {
-      x.tx("??");
+      x.tx("?rref?");
     }
+    checkRenderExtensions(status, x, type);
   }
   
+ 
+  private boolean isLocalReference(String url) {
+    if (url == null) {
+      return false;
+    }
+    if (url.contains("/_history")) {
+      url = url.substring(0, url.indexOf("/_hist"));
+    }
+    
+    if (url.matches(Constants.LOCAL_REF_REGEX)) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+
   public void renderReference(ResourceWrapper res, HierarchicalTableGenerator gen, List<Piece> pieces, Reference r, boolean allowLinks) throws UnsupportedEncodingException, IOException {
     if (r == null) { 
       pieces.add(gen.new Piece(null, "null!", null));
@@ -397,7 +436,7 @@ public abstract class ResourceRenderer extends DataRenderer {
       } else if (r.hasIdentifier()) {
         text.append(displayIdentifier(wrapWC(res, r.getIdentifier())));
       } else {
-        text.append("??");        
+        text.append("?r-ref?");        
       }
     } else if (context.isTechnicalMode()) {
       text.append(r.getReference());
@@ -472,7 +511,7 @@ public abstract class ResourceRenderer extends DataRenderer {
       } else if (r.has("identifier")) {
         text.append(displayIdentifier(r.child("identifier")));
       } else {
-        text.append("??");        
+        text.append("?r-ref2?");        
       }
     } else if (context.isTechnicalMode()) {
       text.append(r.primitiveValue("reference"));
@@ -570,14 +609,20 @@ public abstract class ResourceRenderer extends DataRenderer {
   protected void renderUri(RenderingStatus status, XhtmlNode x, ResourceWrapper uri) throws FHIRFormatError, DefinitionException, IOException { 
     if (!renderPrimitiveWithNoValue(status, x, uri)) {
       String v = uri.primitiveValue();
+      boolean local = false;
 
       if (context.getContextUtilities().isResource(v)) {
         v = "http://hl7.org/fhir/StructureDefinition/"+v;
+        local = true;
       }
       if (v.startsWith("mailto:")) { 
         x.ah(v).addText(v.substring(7)); 
       } else { 
-        ResourceWithReference rr = resolveReference(uri);
+        String link = getLinkForCode(v, null, null);
+        if (link != null) {  
+          x.ah(context.prefixLocalHref(link)).addText(v);
+        } else {
+        ResourceWithReference rr = local ? resolveReference(uri.resource(), v, true) : resolveReference(uri);
         if (rr != null) {
           if (rr.getResource() == null) {
             x.ah(context.prefixLocalHref(rr.getWebPath())).addText(rr.getUrlReference());
@@ -602,6 +647,7 @@ public abstract class ResourceRenderer extends DataRenderer {
           } 
         }
       } 
+      }
     }
   } 
 
@@ -647,7 +693,7 @@ public abstract class ResourceRenderer extends DataRenderer {
     return container;
   }
 
-  private ResourceWithReference resolveOutside(ResourceWrapper resource, String url, String version, boolean followLinks) {
+  private ResourceWithReference resolveOutside(ResourceWrapper resource, String url, String version, boolean followLinks) throws IOException {
     ResourceWrapper container = findContainer(resource);
     if (container != null) {
       while (container != null) {
@@ -700,7 +746,7 @@ public abstract class ResourceRenderer extends DataRenderer {
     return null;
   }
 
-  protected ResourceWithReference resolveReference(ResourceWrapper resource, String url, boolean followLinks) {
+  protected ResourceWithReference resolveReference(ResourceWrapper resource, String url, boolean followLinks) throws IOException {
     if (url == null) {
       return null;
     }
@@ -720,16 +766,23 @@ public abstract class ResourceRenderer extends DataRenderer {
   }
 
   protected ResourceWithReference resolveReference(ResourceWrapper reference) {
-    if (reference.fhirType().equals("CodeableReference")) {
-      if (reference.has("reference")) {
-        return resolveReference(reference.child("reference"));
+    try {
+      if (reference.fhirType().equals("CodeableReference")) {
+        if (reference.has("reference")) {
+          return resolveReference(reference.child("reference"));
+        } else {
+          return null;
+        }
+      } else if (reference.fhirType().equals("Reference")) {
+        return resolveReference(reference.getResourceWrapper(), reference.primitiveValue("reference"), true);
       } else {
-        return null;
+        return resolveReference(reference.getResourceWrapper(), reference.primitiveValue(), true);
       }
-    } else if (reference.fhirType().equals("Reference")) {
-      return resolveReference(reference.getResourceWrapper(), reference.primitiveValue("reference"), true);
-    } else {
-      return resolveReference(reference.getResourceWrapper(), reference.primitiveValue(), true);
+    } catch (IOException e) {
+      if (context.isDebug()) {
+        e.printStackTrace();        
+      }
+      return null;
     }
   }
   
@@ -814,27 +867,43 @@ public abstract class ResourceRenderer extends DataRenderer {
   }
 
   protected XhtmlNode renderResourceTechDetails(ResourceWrapper r, XhtmlNode x) throws UnsupportedEncodingException, FHIRException, IOException {
-    return renderResourceTechDetails(r, x, (context.isContained() ? " #"+r.getId() : r.getId()));
+    return renderResourceTechDetails(r, x, (context.isContained() && r.getId() != null ? "#"+r.getId() : r.getId()));
   }
   
   protected XhtmlNode renderResourceTechDetails(ResourceWrapper r, XhtmlNode x, String desc) throws UnsupportedEncodingException, FHIRException, IOException {
     XhtmlNode p = x.para().attribute("class", "res-header-id");
     String ft = context.getTranslatedCode(r.fhirType(), "http://hl7.org/fhir/fhir-types");
     if (desc == null) { 
-      p.b().tx(context.formatPhrase(context.isTechnicalMode() ? RenderingContext.PROF_DRIV_GEN_NARR_TECH : RenderingContext.PROF_DRIV_GEN_NARR, ft, ""));      
+      p.b().tx(context.formatPhrase(context.isTechnicalMode() && !isInner() ? RenderingContext.PROF_DRIV_GEN_NARR_TECH : RenderingContext.PROF_DRIV_GEN_NARR, ft, ""));      
     } else {
-      p.b().tx(context.formatPhrase(context.isTechnicalMode() ? RenderingContext.PROF_DRIV_GEN_NARR_TECH : RenderingContext.PROF_DRIV_GEN_NARR, ft, desc));
+      p.b().tx(context.formatPhrase(context.isTechnicalMode() && !isInner() ? RenderingContext.PROF_DRIV_GEN_NARR_TECH : RenderingContext.PROF_DRIV_GEN_NARR, ft, desc));
     }
 
     // first thing we do is lay down the resource anchors. 
     if (!Utilities.noString(r.getId())) {
       if (!context.isSecondaryLang()) {
-        x.an(context.prefixAnchor(r.getScopedId()));
-        x.an(context.prefixAnchor("hc"+r.getScopedId()));
+        String sid = r.getScopedId();
+        if (sid != null) {
+          if (!context.hasAnchor(sid)) {
+            context.addAnchor(sid);
+            x.an(context.prefixAnchor(sid));
+          }
+          sid = "hc"+sid;
+          if (!context.hasAnchor(sid)) {
+            context.addAnchor(sid);
+            x.an(context.prefixAnchor(sid));
+          }
+        }
       }
       if (context.getLocale() != null) {
         String langSuffix = "-"+context.getLocale().toLanguageTag();
-        x.an(context.prefixAnchor("hc"+r.getScopedId()+langSuffix));
+        if (r.getScopedId() != null) {
+          String sid = r.getScopedId()+langSuffix;
+          if (!context.hasAnchor(sid)) {
+            context.addAnchor(sid);
+            x.an(context.prefixAnchor(sid));
+          }
+        }
       }
     }
 
@@ -856,7 +925,7 @@ public abstract class ResourceRenderer extends DataRenderer {
         boolean sfirst = true;
         p = plateStyle(div.para());
         if (versionId != null) {
-          p.tx(context.formatPhrase(RenderingContext.RES_REND_VER, versionId));
+          p.tx(context.formatPhrase(RenderingContext.RES_REND_VER, versionId.primitiveValue()));
           sfirst = false;
         }
         if (lastUpdated != null) {
@@ -1014,7 +1083,7 @@ public abstract class ResourceRenderer extends DataRenderer {
       }
     }
     if (columns.size() > 0) {
-      XhtmlNode table = x.table("grid");
+      XhtmlNode table = x.table("grid", false);
       
       if (provider.getTitle() != null) {
         table.tr().td().colspan(columns.size()).b().tx(provider.getTitle());
@@ -1050,9 +1119,102 @@ public abstract class ResourceRenderer extends DataRenderer {
     }
   }
   
+
+  public void genSummaryTable(RenderingStatus status, XhtmlNode x, ResourceWrapper cr) throws IOException {
+    if (context.isShowSummaryTable() && cr != null) {
+      XhtmlNode tbl = x.table("grid", false);
+      genSummaryTableContent(status, tbl, cr);
+    }
+  }
+  
+
+  protected void genSummaryTableContent(RenderingStatus status, XhtmlNode tbl, ResourceWrapper cr) throws IOException {
+    XhtmlNode tr;
+    if (cr.has("url")) {
+      tr = tbl.tr();
+      tr.td().tx(context.formatPhrase(RenderingContext.GENERAL_DEFINING_URL)+":");
+      tr.td().code().tx(cr.primitiveValue("url"));
+    } else if (cr.hasExtension("http://hl7.org/fhir/5.0/StructureDefinition/extension-NamingSystem.url")) {
+      status.setExtensions(true);
+      tr = tbl.tr();
+      tr.td().tx(context.formatPhrase(RenderingContext.GENERAL_DEFINING_URL)+":");
+      tr.td().code().tx(cr.extensionString("http://hl7.org/fhir/5.0/StructureDefinition/extension-NamingSystem.url"));
+    } else if (!context.isContained()) {                                          
+      tr = tbl.tr();
+      tr.td().tx(context.formatPhrase(RenderingContext.GENERAL_DEFINING_URL));
+      tr.td();      
+    }
+    if (cr.has("version")) {
+      tr = tbl.tr();
+      tr.td().tx(context.formatPhrase(RenderingContext.GENERAL_VER)+":");
+      renderDataType(status, tr.td(), cr.child("version"));
+    } else if (cr.hasExtension("http://terminology.hl7.org/StructureDefinition/ext-namingsystem-version")) {
+      status.setExtensions(true);
+      tr = tbl.tr();
+      tr.td().tx(context.formatPhrase(RenderingContext.GENERAL_VER)+":");
+      renderDataType(status, tr.td(), cr.extensionValue("http://hl7.org/fhir/5.0/StructureDefinition/extension-NamingSystem.version"));
+    }
+
+    String name = context.getTranslated(cr.child("name"));
+    String title = context.getTranslated(cr.child("title"));
+    
+    if (name != null) {
+      tr = tbl.tr();
+      tr.td().tx(context.formatPhrase(RenderingContext.GENERAL_NAME)+":");
+      tr.td().tx(name);
+    }
+    
+    if (title != null && !title.equalsIgnoreCase(name)) {
+      tr = tbl.tr();
+      tr.td().tx(context.formatPhrase(RenderingContext.GENERAL_TITLE)+":");
+      tr.td().tx(title);
+    }
+
+    if (cr.has("status") && !context.isContained()) {
+      tr = tbl.tr();
+      tr.td().tx(context.formatPhrase(RenderingContext.GENERAL_STATUS)+":");
+      tr.td().tx(describeStatus(status, cr));
+    }
+
+    if (cr.has("description")) {
+      tr = tbl.tr();
+      tr.td().tx(context.formatPhrase(RenderingContext.GENERAL_DEFINITION)+":");
+      tr.td().markdown(context.getTranslated(cr.child("description")), "description");
+    }
+
+    if (cr.has("publisher")) {
+      tr = tbl.tr();
+      tr.td().tx(context.formatPhrase(RenderingContext.CANON_REND_PUBLISHER)+":");
+      buildPublisherLinks( tr.td(), cr);
+    }
+    
+    if (cr.hasExtension(ToolingExtensions.EXT_WORKGROUP)) {
+      status.setExtensions(true);
+      tr = tbl.tr();
+      tr.td().tx(context.formatPhrase(RenderingContext.CANON_REND_COMMITTEE)+":");
+      renderCommitteeLink(tr.td(), cr);
+    }
+
+    if (cr.has("copyright")) {
+      tr = tbl.tr();
+      tr.td().tx(context.formatPhrase(RenderingContext.GENERAL_COPYRIGHT)+":");
+      tr.td().markdown(context.getTranslated(cr.child("copyright")), "copyright");
+    }
+    
+    if (cr.hasExtension(ToolingExtensions.EXT_FMM_LEVEL)) {
+      status.setExtensions(true);
+      // Use hard-coded spec link to point to current spec because DSTU2 had maturity listed on a different page
+      tr = tbl.tr();
+      tr.td().ah("http://hl7.org/fhir/versions.html#maturity", "Maturity Level").attribute("class", "fmm").tx(context.formatPhrase(RenderingContext.CANON_REND_COMMITTEE)+":");
+      renderDataType(status, tr.td(), cr.extensionValue(ToolingExtensions.EXT_FMM_LEVEL));
+    }    
+  }
+
+
+
   public void genSummaryTable(RenderingStatus status, XhtmlNode x, CanonicalResource cr) throws IOException {
     if (context.isShowSummaryTable() && cr != null) {
-      XhtmlNode tbl = x.table("grid");
+      XhtmlNode tbl = x.table("grid", false);
       genSummaryTableContent(status, tbl, cr);
     }
   }
@@ -1063,12 +1225,12 @@ public abstract class ResourceRenderer extends DataRenderer {
     if (cr.hasUrl()) {
       tr = tbl.tr();
       tr.td().tx(context.formatPhrase(RenderingContext.GENERAL_DEFINING_URL)+":");
-      tr.td().tx(cr.getUrl());
+      tr.td().code().tx(cr.getUrl());
     } else if (cr.hasExtension("http://hl7.org/fhir/5.0/StructureDefinition/extension-NamingSystem.url")) {
       status.setExtensions(true);
       tr = tbl.tr();
       tr.td().tx(context.formatPhrase(RenderingContext.GENERAL_DEFINING_URL));
-      tr.td().tx(ToolingExtensions.readStringExtension(cr, "http://hl7.org/fhir/5.0/StructureDefinition/extension-NamingSystem.url")+":");
+      tr.td().code().tx(ToolingExtensions.readStringExtension(cr, "http://hl7.org/fhir/5.0/StructureDefinition/extension-NamingSystem.url")+":");
     } else if (!context.isContained()) {                                          
       tr = tbl.tr();
       tr.td().tx(context.formatPhrase(RenderingContext.GENERAL_DEFINING_URL));
@@ -1115,14 +1277,14 @@ public abstract class ResourceRenderer extends DataRenderer {
     if (cr.hasPublisher()) {
       tr = tbl.tr();
       tr.td().tx(context.formatPhrase(RenderingContext.CANON_REND_PUBLISHER)+":");
-      tr.td().tx(buildPublisherLinks(cr));
+      buildPublisherLinks(tr.td(), cr);
     }
     
     if (cr.hasExtension(ToolingExtensions.EXT_WORKGROUP)) {
       status.setExtensions(true);
       tr = tbl.tr();
       tr.td().tx(context.formatPhrase(RenderingContext.CANON_REND_COMMITTEE)+":");
-      tr.td().tx(renderCommitteeLink(cr));
+      renderCommitteeLink(tr.td(), cr);
     }
 
     if (cr.hasCopyright()) {
@@ -1141,68 +1303,137 @@ public abstract class ResourceRenderer extends DataRenderer {
   }
 
 
-  protected String renderCommitteeLink(CanonicalResource cr) {
-    String code = ToolingExtensions.readStringExtension(cr, ToolingExtensions.EXT_WORKGROUP);
+  protected void renderCommitteeLink(XhtmlNode x, ResourceWrapper cr) {
+    String code = cr.extensionString(ToolingExtensions.EXT_WORKGROUP);
     CodeSystem cs = context.getContext().fetchCodeSystem("http://terminology.hl7.org/CodeSystem/hl7-work-group");
     if (cs == null || !cs.hasWebPath())
-      return code;
+      x.tx(code);
     else {
       ConceptDefinitionComponent cd = CodeSystemUtilities.findCode(cs.getConcept(), code);
       if (cd == null) {
-        return code;        
+        x.tx(code);        
       } else {
-        return "<a href=\""+cs.getWebPath()+"#"+cs.getId()+"-"+cd.getCode()+"\">"+cd.getDisplay()+"</a>";
+        x.ah(cs.getWebPath()+"#"+cs.getId()+"-"+cd.getCode()).tx(cd.getDisplay());
       }
     }
   }
   
-  private String buildPublisherLinks(CanonicalResource cr) {
-    CommaSeparatedStringBuilder b = new CommaSeparatedStringBuilder(". ");
+  private void buildPublisherLinks(XhtmlNode x, CanonicalResource cr) {
     boolean useName = false;
     for (ContactDetail cd : cr.getContact()) {
       if (!cd.hasName()) {
         useName = true;
       }
     }
+    boolean first = true;
     if (!useName) {
-      b.append(Utilities.escapeXml(cr.getPublisher()));            
+      x.tx(Utilities.escapeXml(cr.getPublisher())); 
+      first = false;          
     }    
     for (ContactDetail cd : cr.getContact()) {
       String name = cd.hasName() ? cd.getName() : cr.getPublisher();
-      b.append(renderContact(name, cd.getTelecom()));
+      if (cd.hasTelecom()) {
+        if (first) first = false; else x.tx(". ");
+        renderContact(x, name, cd.getTelecom());
+      }
     }
-    return b.toString();
   }
 
-  private String renderContact(String name, List<ContactPoint> telecom) {
+  private void buildPublisherLinks(XhtmlNode x, ResourceWrapper cr) {
+    boolean useName = false;
+    for (ResourceWrapper cd : cr.children("contact")) {
+      if (!cd.has("name")) {
+        useName = true;
+      }
+    }
+    boolean first = true;
+    if (!useName) {
+      x.tx(Utilities.escapeXml(cr.primitiveValue("publisher")));
+      first = false;          
+    }    
+    for (ResourceWrapper cd : cr.children("contact")) {
+      String name = cd.has("name") ? cd.primitiveValue("name") : cr.primitiveValue("publisher");
+      if (cd.has("telecom")) {
+        if (first) first = false; else x.tx(". ");
+        renderContactW(x, name, cd.children("telecom"));
+      }
+    }
+  }
+  
+
+  private void renderContactW(XhtmlNode x, String name, List<ResourceWrapper> telecom) {
+    List<String> urls = new ArrayList<>();
+    for (ResourceWrapper t : telecom) {
+      if ("url".equals(t.primitiveValue()) && t.has("value")) {
+        urls.add(t.primitiveValue("value"));
+      }
+    }
+    if (urls.size() == 1) {
+      x.ah(urls.get(0)).tx(name);
+    } else { // if (urls.size() == 0) {
+      x.tx(name);
+    } 
+    for (ResourceWrapper t : telecom) {
+      String system = t.primitiveValue("system");
+      String value = t.primitiveValue("value"); 
+      if ("url".equals(system) && value != null && urls.size() != 1) {
+        x.tx(", ");
+        x.ah(t.primitiveValue("value")).tx("Link");
+      }
+      if ("email".equals(system) && value != null) {
+        x.tx(", ");
+        x.ah("mailto:"+t.primitiveValue("value")).tx("Email");
+      }
+      if ("phone".equals(system) && value != null) {
+        x.tx(", ");
+        x.tx(t.primitiveValue("value"));
+      }
+      if ("fax".equals(system) && value != null) {
+        x.tx(", ");
+        x.tx("Fax:"+t.primitiveValue("value"));
+      }
+    } 
+  }
+
+  private void renderContact(XhtmlNode x, String name, List<ContactPoint> telecom) {
     List<String> urls = new ArrayList<>();
     for (ContactPoint t : telecom) {
       if (t.getSystem() == ContactPointSystem.URL && t.hasValue()) {
         urls.add(t.getValue());
       }
     }
-    StringBuilder b = new StringBuilder();
     if (urls.size() == 1) {
-      b.append("<a href=\""+Utilities.escapeXml(urls.get(0))+"\">"+Utilities.escapeXml(name)+"</a>");
-    } else if (urls.size() == 1) {
-      b.append(Utilities.escapeXml(name));
+      x.ah(urls.get(0)).tx(name);
+    } else { // if (urls.size() == 0) {
+      x.tx(name);
     } 
     for (ContactPoint t : telecom) {
-      b.append(", ");
-      if (t.getSystem() == ContactPointSystem.URL && t.hasValue() && urls.size() > 1) {
-        b.append("<a href=\""+Utilities.escapeXml(t.getValue())+"\">Link</a>");
+      if (t.getSystem() == ContactPointSystem.URL && t.hasValue() && urls.size() != 1) {
+        x.tx(", ");
+        x.ah(t.getValue()).tx("Link");
       }
       if (t.getSystem() == ContactPointSystem.EMAIL && t.hasValue()) {
-        b.append("<a href=\"mailto:"+Utilities.escapeXml(t.getValue())+"\">Email</a>");
+        x.tx(", ");
+        x.ah("mailto:"+t.getValue()).tx("Email");
       }
       if (t.getSystem() == ContactPointSystem.PHONE && t.hasValue()) {
-        b.append(Utilities.escapeXml(t.getValue()));
+        x.tx(", ");
+        x.tx(t.getValue());
       }
       if (t.getSystem() == ContactPointSystem.FAX && t.hasValue()) {
-        b.append("Fax:"+Utilities.escapeXml(t.getValue()));
+        x.tx(", ");
+        x.tx("Fax:"+t.getValue());
       }
     } 
-    return b.toString();
+  }
+
+  protected String describeStatus(RenderingStatus status, ResourceWrapper cr) {
+    String s = describeStatus(cr.primitiveValue("status"), cr.primitiveValue("experimental"), cr.child("date"), cr.extensionString("http://hl7.org/fhir/StructureDefinition/valueset-deprecated"));
+    if (cr.hasExtension(ToolingExtensions.EXT_STANDARDS_STATUS)) {
+      status.setExtensions(true);
+      s = s + presentStandardsStatus(cr.extensionString(ToolingExtensions.EXT_STANDARDS_STATUS));
+    }
+    return s;
   }
 
   protected String describeStatus(RenderingStatus status, CanonicalResource cr) {
@@ -1242,6 +1473,35 @@ public abstract class ResourceRenderer extends DataRenderer {
       case RETIRED: return "Retired"+sfx;
       default: return "Unknown"+sfx;
       }
+    }
+  }
+
+  protected String describeStatus(String status, String experimental, ResourceWrapper dt, String deprecated) {
+    String sfx = dt != null ? " as of "+displayDataType(dt) : "";
+    if ("true".equals(deprecated)) {
+      if ("retired".equals(status)) {
+        return "Deprecated + Retired"+sfx;
+      } else {
+        return "Deprecated"+sfx; 
+      }
+    } else {
+      switch (status) {
+      case "active": return ("true".equals(experimental) ? "Experimental" : "Active")+sfx; 
+      case "draft": return "Draft"+sfx;
+      case "retired": return "Retired"+sfx;
+      default: return "Unknown"+sfx;
+      }
+    }
+  }
+  protected void addContained(RenderingStatus status, XhtmlNode x, List<ResourceWrapper> list) throws FHIRFormatError, DefinitionException, FHIRException, IOException, EOperationOutcome {
+    for (ResourceWrapper c : list) {
+      x.hr();
+      String id = c.getScopedId();
+      if (!context.hasAnchor(id)) {
+        context.addAnchor(id);
+        x.an(context.prefixAnchor(id));
+      }
+      RendererFactory.factory(c, context.forContained()).setInner(true).buildNarrative(status, x, c);
     }
   }
 

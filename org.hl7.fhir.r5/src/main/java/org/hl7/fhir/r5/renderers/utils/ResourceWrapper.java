@@ -31,16 +31,28 @@ public abstract class ResourceWrapper {
   
   public static class NamedResourceWrapperList {
     private String name;
+    private String url; // for extension definitions
     private List<ResourceWrapper> values = new ArrayList<ResourceWrapper>();
-    
+
     public NamedResourceWrapperList(String name) {
       super();
       this.name = name;
+    }
+
+    public NamedResourceWrapperList(String name, String url) {
+      super();
+      this.name = name;
+      this.url = url;
     }
     
     public String getName() {
       return name;
     }
+    
+    public String getUrl() {
+      return url;
+    }
+
     public List<ResourceWrapper> getValues() {
       return values;
     }
@@ -403,8 +415,8 @@ public abstract class ResourceWrapper {
   public abstract String getId();
 
   public void markLanguage(XhtmlNode x, Locale locale) {
-    x.setAttribute("lang", locale.toString());
-    x.setAttribute("xml:lang", locale.toString());
+    x.setAttribute("lang", locale.toLanguageTag());
+    x.setAttribute("xml:lang", locale.toLanguageTag());
     x.addTag(0, "hr");
     x.addTag(0, "p").b().tx(locale.getDisplayName());
     x.addTag(0, "hr");
@@ -510,6 +522,8 @@ public abstract class ResourceWrapper {
   public abstract boolean hasPrimitiveValue();
   public abstract String primitiveValue();
   public abstract boolean isResource();
+  public abstract boolean hasUserData(String name);
+  public abstract Object getUserData(String name);
 
 
 }

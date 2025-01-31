@@ -174,7 +174,6 @@ public class DocumentReference extends DomainResource {
   public static class ReferredDocumentStatusEnumFactory implements EnumFactory<ReferredDocumentStatus> {
     public ReferredDocumentStatus fromCode(String codeString) throws IllegalArgumentException {
       if (codeString == null || "".equals(codeString))
-        if (codeString == null || "".equals(codeString))
           return null;
       if ("preliminary".equals(codeString))
         return ReferredDocumentStatus.PRELIMINARY;
@@ -207,7 +206,9 @@ public class DocumentReference extends DomainResource {
     }
 
     public String toCode(ReferredDocumentStatus code) {
-      if (code == ReferredDocumentStatus.PRELIMINARY)
+       if (code == ReferredDocumentStatus.NULL)
+           return null;
+       if (code == ReferredDocumentStatus.PRELIMINARY)
         return "preliminary";
       if (code == ReferredDocumentStatus.FINAL)
         return "final";
@@ -216,7 +217,7 @@ public class DocumentReference extends DomainResource {
       if (code == ReferredDocumentStatus.ENTEREDINERROR)
         return "entered-in-error";
       return "?";
-    }
+   }
 
     public String toSystem(ReferredDocumentStatus code) {
       return code.getSystem();
@@ -368,7 +369,9 @@ public class DocumentReference extends DomainResource {
     }
 
     public String toCode(DocumentRelationshipType code) {
-      if (code == DocumentRelationshipType.REPLACES)
+       if (code == DocumentRelationshipType.NULL)
+           return null;
+       if (code == DocumentRelationshipType.REPLACES)
         return "replaces";
       if (code == DocumentRelationshipType.TRANSFORMS)
         return "transforms";
@@ -377,7 +380,7 @@ public class DocumentReference extends DomainResource {
       if (code == DocumentRelationshipType.APPENDS)
         return "appends";
       return "?";
-    }
+   }
 
     public String toSystem(DocumentRelationshipType code) {
       return code.getSystem();

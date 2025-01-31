@@ -87,6 +87,7 @@ public class POGenerator {
   }
 
   private List<String> prefixes = new ArrayList<>();
+  private int noTrans = 0;
 
   private void execute(String core, String igpub, String pascal) throws IOException {
     String source = Utilities.path(core, "/org.hl7.fhir.utilities/src/main/resources");
@@ -95,15 +96,17 @@ public class POGenerator {
       generate(source, "rendering-phrases.properties",  "rendering-phrases-de.po",    "rendering-phrases_de.properties", 2);
       generate(source, "rendering-phrases.properties",  "rendering-phrases-es.po",    "rendering-phrases_es.properties", 3);
       generate(source, "rendering-phrases.properties",  "rendering-phrases-ja.po",    "rendering-phrases_ja.properties", 2);
+      generate(source, "rendering-phrases.properties",  "rendering-phrases-fr.po",    "rendering-phrases_fr.properties", 2);
       generate(source, "rendering-phrases.properties",  "rendering-phrases-nl.po",    "rendering-phrases_nl.properties", 2);
-      generate(source, "rendering-phrases.properties",  "rendering-phrases-pt_BR.po", "rendering-phrases_pt-BR.properties", 2);
+      generate(source, "rendering-phrases.properties",  "rendering-phrases-pt_BR.po", "rendering-phrases_pt_BR.properties", 2);
 
       generate(source, "Messages.properties", "validator-messages-en.po",    null, 2);
       generate(source, "Messages.properties", "validator-messages-de.po",    "Messages_de.properties", 2);
       generate(source, "Messages.properties", "validator-messages-es.po",    "Messages_es.properties", 3);
       generate(source, "Messages.properties", "validator-messages-ja.po",    "Messages_ja.properties", 2);
+      generate(source, "Messages.properties", "validator-messages-fr.po",    "Messages_fr.properties", 2);
       generate(source, "Messages.properties", "validator-messages-nl.po",    "Messages_nl.properties", 2);
-      generate(source, "Messages.properties", "validator-messages-pt_BR.po", "Messages_pt-BR.properties", 2);
+      generate(source, "Messages.properties", "validator-messages-pt_BR.po", "Messages_pt_BR.properties", 2);
 
       System.out.println("Finished");
     } 
@@ -320,7 +323,13 @@ public class POGenerator {
     // load the source file 
     // update the destination object set for changes from the source file
     // save the destination file 
-    List<POObject> objects = loadPOFile(Utilities.path(source, "source", dest));
+    String fn = Utilities.path(source, "source", dest);
+    List<POObject> objects;
+    if (ManagedFileAccess.file(fn).exists()) {
+      objects = loadPOFile(fn);
+    } else {
+      objects = new ArrayList<POGenerator.POObject>();
+    }
     List<PropertyValue> props = loadProperties(Utilities.path(source, src), false);
     for (PropertyValue e : props) {
       String name = e.getName();
@@ -409,7 +418,7 @@ public class POGenerator {
       if (o.duplicate) {
         b.append("msgctxt \""+o.id+"\"\r\n");        
       } 
-      String m = tfxMode && Utilities.noString(o.msgid) ? "-- no content: do not translate --" : o.msgid; 
+      String m = tfxMode && Utilities.noString(o.msgid) ? "-- no content: do not translate #"+(++noTrans )+" --" : o.msgid; 
       b.append("msgid \""+wrapQuotes(m)+"\"\r\n");
       if (o.msgidPlural != null) {
         b.append("msgid_plural \""+wrapQuotes(o.msgidPlural)+"\"\r\n"); 
@@ -417,7 +426,11 @@ public class POGenerator {
           o.msgstr.add("");
         }
         for (int i = 0; i < o.msgstr.size(); i++) {
-          b.append("msgstr["+i+"] \""+wrapQuotes(o.msgstr.get(i))+"\"\r\n");
+          String s = o.msgstr.get(i);
+//          if (tfxMode && Utilities.noString(s)) {
+//            s = Utilities.noString(i == 0 ? o.msgid : o.msgidPlural) ? "-- no content: do not translate --" : "";
+//          }
+          b.append("msgstr["+i+"] \""+wrapQuotes(s)+"\"\r\n");
         }
       } else {
         if (o.msgstr.size() == 0) {

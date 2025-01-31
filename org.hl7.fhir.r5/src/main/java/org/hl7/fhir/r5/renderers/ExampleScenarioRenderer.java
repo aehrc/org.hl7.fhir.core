@@ -30,6 +30,7 @@ import org.hl7.fhir.r5.renderers.utils.RenderingContext;
 import org.hl7.fhir.r5.renderers.utils.RenderingContext.KnownLinkType;
 import org.hl7.fhir.r5.renderers.utils.ResourceWrapper;
 import org.hl7.fhir.r5.utils.EOperationOutcome;
+import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.xhtml.XhtmlDocument;
 import org.hl7.fhir.utilities.xhtml.XhtmlNode;
 
@@ -50,7 +51,8 @@ public class ExampleScenarioRenderer extends TerminologyRenderer {
       genSummaryTable(status, x, (ExampleScenario) r.getBase());
       render(status, x, (ExampleScenario) r.getBase(), r);      
     } else {
-      throw new Error("ExampleScenarioRenderer only renders native resources directly");
+      // the intention is to change this in the future
+      x.para().tx("ExampleScenarioRenderer only renders native resources directly");
     }
   }
   
@@ -79,19 +81,24 @@ public class ExampleScenarioRenderer extends TerminologyRenderer {
         }
       }
     } catch (Exception e) {
+      e.printStackTrace();
       throw new FHIRException(context.formatPhrase(RenderingContext.EX_SCEN_ERR_REN, scen.getUrl(), e) + " ");
     }
   }
 
   public String renderDiagram(RenderingStatus status, ResourceWrapper res, ExampleScenario scen) throws IOException {
-    String plantUml = toPlantUml(status, res, scen);
-    SourceStringReader reader = new SourceStringReader(plantUml);
-    final ByteArrayOutputStream os = new ByteArrayOutputStream();
-    reader.outputImage(os, new FileFormatOption(FileFormat.SVG));
-    os.close();
+    try {
+      String plantUml = toPlantUml(status, res, scen);
+      SourceStringReader reader = new SourceStringReader(plantUml);
+      final ByteArrayOutputStream os = new ByteArrayOutputStream();
+      reader.outputImage(os, new FileFormatOption(FileFormat.SVG));
+      os.close();
 
-    final String svg = new String(os.toByteArray(), Charset.forName("UTF-8"));
-    return svg;
+      final String svg = new String(os.toByteArray(), Charset.forName("UTF-8"));
+      return svg;
+    } catch (Exception e) {
+      return "<p style=\"color: maroon\"><b>"+Utilities.escapeXml(e.getMessage())+"</b></p>";
+    }
   }
 
   protected String toPlantUml(RenderingStatus status, ResourceWrapper res, ExampleScenario scen) throws IOException {
@@ -196,12 +203,14 @@ public class ExampleScenarioRenderer extends TerminologyRenderer {
   private String handleDeactivation(String actorId, boolean active, Map<String,Boolean> actorsActive, Map<String, String> actorKeys) {
     String plantUml = "";
     Boolean actorWasActive = actorsActive.get(actorId);
-    if (!active && actorWasActive) {
-      plantUml += "deactivate " + actorKeys.get(actorId) + "\r\n";
-    }
-    if (active != actorWasActive) {
-      actorsActive.remove(actorId);
-      actorsActive.put(actorId, Boolean.valueOf(active));
+    if (actorWasActive != null) {
+      if (!active && actorWasActive) {
+        plantUml += "deactivate " + actorKeys.get(actorId) + "\r\n";
+      }
+      if (active != actorWasActive) {
+        actorsActive.remove(actorId);
+        actorsActive.put(actorId, Boolean.valueOf(active));
+      }
     }
     return plantUml;
   }
@@ -241,7 +250,7 @@ public class ExampleScenarioRenderer extends TerminologyRenderer {
   }
 
   public boolean renderActors(RenderingStatus status, ResourceWrapper res, XhtmlNode x, ExampleScenario scen) throws IOException {
-    XhtmlNode tbl = x.table("table-striped table-bordered");
+    XhtmlNode tbl = x.table("table-striped table-bordered", false);
     XhtmlNode thead = tbl.tr();
     thead.th().addText(context.formatPhrase(RenderingContext.GENERAL_NAME));
     thead.th().addText(context.formatPhrase(RenderingContext.GENERAL_TYPE));
@@ -258,7 +267,7 @@ public class ExampleScenarioRenderer extends TerminologyRenderer {
   }
 
   public boolean renderInstances(RenderingStatus status, ResourceWrapper res, XhtmlNode x, ExampleScenario scen) throws IOException {
-    XhtmlNode tbl = x.table("table-striped table-bordered");
+    XhtmlNode tbl = x.table("table-striped table-bordered", false);
     XhtmlNode thead = tbl.tr();
     thead.th().addText(context.formatPhrase(RenderingContext.GENERAL_NAME));
     thead.th().addText(context.formatPhrase(RenderingContext.GENERAL_TYPE));
@@ -389,7 +398,7 @@ public class ExampleScenarioRenderer extends TerminologyRenderer {
       div.para().b().i().tx(context.formatPhrase(RenderingContext.EX_SCEN_POSTCON));
       addMarkdown(div, process.getPostConditions());
     }
-    XhtmlNode tbl = div.table("table-striped table-bordered").style("width:100%");
+    XhtmlNode tbl = div.table("table-striped table-bordered", false).style("width:100%");
     XhtmlNode thead = tbl.tr();
     thead.th().addText(context.formatPhrase(RenderingContext.EX_SCEN_STEP));
     thead.th().addText(context.formatPhrase(RenderingContext.GENERAL_NAME));
@@ -504,9 +513,9 @@ public class ExampleScenarioRenderer extends TerminologyRenderer {
     if (instanceRef==null || instanceRef.getInstanceReference()==null)
       return;
     ExampleScenarioInstanceComponent instance = instances.get(instanceRef.getInstanceReference());
-    if (instance==null)
-      throw new FHIRException(context.formatPhrase(RenderingContext.EX_SCEN_UN_INST, instanceRef.getInstanceReference())+" ");
-    if (instanceRef.hasVersionReference()) {
+    if (instance==null) {
+      instanceCell.b().tx("Bad reference: "+instanceRef.getInstanceReference());
+    } else if (instanceRef.hasVersionReference()) {
       ExampleScenarioInstanceVersionComponent theVersion = null;
       for (ExampleScenarioInstanceVersionComponent version: instance.getVersion()) {
         if (version.getKey().equals(instanceRef.getVersionReference())) {

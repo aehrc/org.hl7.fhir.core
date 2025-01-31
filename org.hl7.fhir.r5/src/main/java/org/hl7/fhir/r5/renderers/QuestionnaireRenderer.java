@@ -33,7 +33,6 @@ import org.hl7.fhir.utilities.xhtml.NodeType;
 import org.hl7.fhir.utilities.xhtml.XhtmlNode; 
 
 public class QuestionnaireRenderer extends TerminologyRenderer { 
-  public static final String EXT_QUESTIONNAIRE_ITEM_TYPE_ORIGINAL = "http://hl7.org/fhir/4.0/StructureDefinition/extension-questionnaire.item.type"; 
 
   public QuestionnaireRenderer(RenderingContext context) { 
     super(context); 
@@ -75,7 +74,7 @@ public class QuestionnaireRenderer extends TerminologyRenderer {
         first = false;
       }
       x.hr();
-      RendererFactory.factory(cont, context.forContained()).buildNarrative(status, x, cont);
+      RendererFactory.factory(cont, context.forContained()).setInner(true).buildNarrative(status, x, cont);
     }
   } 
 
@@ -110,7 +109,7 @@ public class QuestionnaireRenderer extends TerminologyRenderer {
       renderTreeItem(status, gen, row.getSubRows(), q, i, hasFlags); 
     } 
     XhtmlNode xn = gen.generate(model, context.getLocalPrefix(), 1, null); 
-    x.getChildNodes().add(xn); 
+    x.addChildNode(xn); 
     if (doOpts) { 
       renderOptions(q, x); 
     } 
@@ -126,30 +125,52 @@ public class QuestionnaireRenderer extends TerminologyRenderer {
 
   private void renderOptions(List<ResourceWrapper> items, XhtmlNode x) {     
     for (ResourceWrapper i : items) { 
-      renderItemOptions(x, i); 
+      renderItemOptionsList(x, i); 
       renderOptions(i.children("item"), x); 
     }     
   } 
 
   public void renderItemOptions(XhtmlNode x, ResourceWrapper i) { 
     if (i.has("answerOption")) { 
-      boolean useSelect = false; 
       for (ResourceWrapper opt : i.children("answerOption")) { 
-        useSelect = useSelect || "true".equals(opt.primitiveValue("initialSelected"));  
+        String value = "??";
+        String text = "??";
+        ResourceWrapper v = opt.child("value");
+        if (v.isPrimitive()) {
+          value = v.primitiveValue();
+          text = v.primitiveValue();
+        } else if (v.fhirType().equals("Coding")) {
+          if (v.has("system")) {
+            value = v.primitiveValue("system")+"#"+v.primitiveValue("code");
+          } else {
+            value = v.primitiveValue("code");
+          }
+          if (v.has("display")) { 
+            text = v.primitiveValue("display");
+          } else {
+            text = v.primitiveValue("code");
+          }
+        }
+        if (value == null) {
+          value = "??";
+        }
+        if (text == null) {
+          text = "??";
+        }
+        boolean selected = "true".equals(opt.primitiveValue("initialSelected"));
+        x.option(value, text, selected);
       } 
+    } 
+  }  
+  
+  public void renderItemOptionsList(XhtmlNode x, ResourceWrapper i) { 
+    if (i.has("answerOption")) { 
       x.an(context.prefixAnchor("opt-item."+i.primitiveValue("linkId"))); 
       x.para().b().tx(context.formatPhrase(RenderingContext.QUEST_ANSW, i.primitiveValue("linkId"))+" "); 
       XhtmlNode ul = x.ul(); 
       for (ResourceWrapper opt : i.children("answerOption")) { 
         XhtmlNode li = ul.li(); 
         li.style("font-size: 11px"); 
-        if (useSelect) { 
-          if ("true".equals(opt.primitiveValue("initialSelected"))) { 
-            li.img("icon-selected.png", "icon"); 
-          } else { 
-            li.img("icon-not-selected.png", "icon");             
-          } 
-        } 
         ResourceWrapper v = opt.child("value");
         if (v.isPrimitive()) { 
           li.tx(v.primitiveValue()); 
@@ -267,9 +288,9 @@ public class QuestionnaireRenderer extends TerminologyRenderer {
     String txt = (i.has("prefix") ? i.primitiveValue("prefix") + ". " : "") + i.primitiveValue("text"); 
     r.getCells().add(gen.new Cell(null, null, txt, null, null)); 
     r.getCells().add(gen.new Cell(null, null, ("true".equals(i.primitiveValue("required")) ? "1" : "0")+".."+("true".equals(i.primitiveValue("repeats")) ? "*" : "1"), null, null)); 
-    if (i.child("type").hasExtension(EXT_QUESTIONNAIRE_ITEM_TYPE_ORIGINAL)) { 
+    if (i.child("type").hasExtension(ToolingExtensions.EXT_QUESTIONNAIRE_ITEM_TYPE_ORIGINAL)) { 
       status.setExtensions(true);
-      String t = i.child("type").extensionString(EXT_QUESTIONNAIRE_ITEM_TYPE_ORIGINAL); 
+      String t = i.child("type").extensionString(ToolingExtensions.EXT_QUESTIONNAIRE_ITEM_TYPE_ORIGINAL); 
       r.getCells().add(gen.new Cell(null, context.getLink(KnownLinkType.SPEC)+"codesystem-item-type.html#item-type-"+t, t, null, null)); 
     } else { 
       r.getCells().add(gen.new Cell(null, context.getLink(KnownLinkType.SPEC)+"codesystem-item-type.html#item-type-"+type, type, null, null)); 
@@ -362,7 +383,7 @@ public class QuestionnaireRenderer extends TerminologyRenderer {
       defn.getPieces().add(gen.new Piece(null, (context.formatPhrase(RenderingContext.QUEST_OPTIONS)+" "), null)); 
       if (context.getDefinitionsTarget() == null) { 
         // if we don't have a definitions target, we'll add them below.  
-        defn.getPieces().add(gen.new Piece("#opt-item."+i.primitiveValue("linkId"), Integer.toString(i.children("answerOption").size())+" "+Utilities.pluralize("option", i.children("answerOption").size()), null)); 
+        defn.getPieces().add(gen.new Piece("#"+context.prefixAnchor("opt-item."+i.primitiveValue("linkId")), Integer.toString(i.children("answerOption").size())+" "+Utilities.pluralize("option", i.children("answerOption").size()), null)); 
       } else { 
         defn.getPieces().add(gen.new Piece(context.getDefinitionsTarget()+"#item."+i.primitiveValue("linkId"), Integer.toString(i.children("answerOption").size())+" "+Utilities.pluralize("option", i.children("answerOption").size()), null)); 
       } 
@@ -513,7 +534,7 @@ public class QuestionnaireRenderer extends TerminologyRenderer {
       } 
     } 
     XhtmlNode xn = gen.generate(model, context.getLocalPrefix(), 1, null); 
-    x.getChildNodes().add(xn); 
+    x.addChildNode(xn); 
   } 
 
   private void renderLogicItem(RenderingStatus status, HierarchicalTableGenerator gen, List<Row> rows, ResourceWrapper q, ResourceWrapper i) throws IOException { 
@@ -543,7 +564,7 @@ public class QuestionnaireRenderer extends TerminologyRenderer {
     if (i.has("answerValueSet")) { 
       if (!defn.getPieces().isEmpty()) defn.addPiece(gen.new Piece("br")); 
       defn.getPieces().add(gen.new Piece(null, (context.formatPhrase(RenderingContext.QUEST_VALUE)+" "), null)); 
-      if (Utilities.noString(i.primitiveValue("answerValueSet")) && i.primitiveValue("answerValueSet").startsWith("#")) { 
+      if (Utilities.noString(i.primitiveValue("answerValueSet")) && i.primitiveValue("answerValueSet").startsWith("#")) {
         ResourceWrapper vs = q.getContained(i.primitiveValue("answerValueSet").substring(1)); 
         if (vs == null) { 
           defn.getPieces().add(gen.new Piece(null, i.primitiveValue("answerValueSet"), null));                     
@@ -919,7 +940,7 @@ public class QuestionnaireRenderer extends TerminologyRenderer {
   } 
 
   private void renderDefns(RenderingStatus status, XhtmlNode x, ResourceWrapper q) throws IOException { 
-    XhtmlNode tbl = x.table("dict"); 
+    XhtmlNode tbl = x.table("dict", false); 
     renderRootDefinition(status, tbl, q, new ArrayList<>()); 
     for (ResourceWrapper qi : q.children("item")) { 
       renderDefinition(status, tbl, q, qi, new ArrayList<>()); 

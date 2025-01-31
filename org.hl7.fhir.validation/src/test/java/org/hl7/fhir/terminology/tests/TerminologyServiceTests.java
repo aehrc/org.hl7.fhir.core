@@ -4,6 +4,8 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.HashSet;
+import java.util.Set;
 
 import org.apache.commons.io.IOUtils;
 import org.hl7.fhir.convertors.factory.VersionConvertorFactory_10_50;
@@ -27,7 +29,6 @@ import org.hl7.fhir.r5.model.ValueSet;
 import org.hl7.fhir.r5.model.ValueSet.ValueSetExpansionParameterComponent;
 import org.hl7.fhir.r5.terminologies.expansion.ValueSetExpansionOutcome;
 import org.hl7.fhir.r5.test.utils.CompareUtilities;
-import org.hl7.fhir.r5.test.utils.TestingUtilities;
 import org.hl7.fhir.utilities.FhirPublication;
 import org.hl7.fhir.utilities.TextFile;
 import org.hl7.fhir.utilities.Utilities;
@@ -60,7 +61,7 @@ private static TxTestData testData;
 
   @Parameters(name = "{index}: id {0}")
   public static Iterable<Object[]> data() throws IOException {
-    testData = TxTestData.loadTestDataFromDefaultClassPath();
+    testData = TxTestData.loadTestDataFromPackage("hl7.fhir.uv.tx-ecosystem#dev");
     return testData.getTestData();
   }
 
@@ -92,9 +93,10 @@ private static TxTestData testData;
     if (setup.getSuite().asBoolean("disabled") || setup.getTest().asBoolean("disabled")) {
       return;
     }
-    Resource req = loadResource(setup.getTest().asString("request"));
+    String reqFile = setup.getTest().asString("request");
+    Resource req = reqFile == null ? null : loadResource(reqFile);
     String fn = setup.getTest().has("response:tx.fhir.org") ? setup.getTest().asString("response:tx.fhir.org") : setup.getTest().asString("response");
-    String resp = TestingUtilities.loadTestResource("tx", fn);
+    String resp = testData.load(fn);
     String fp = Utilities.path("[tmp]", "tx", fn);
     JsonObject ext = testData.getExternals() == null ? null : testData.getExternals().getJsonObject(fn);
     File fo = ManagedFileAccess.file(fp);
@@ -107,14 +109,14 @@ private static TxTestData testData;
       engine.getContext().setExpansionParameters((org.hl7.fhir.r5.model.Parameters) loadResource("parameters-default.json"));
     }
     if (setup.getTest().asString("operation").equals("expand")) {
-      expand(setup.getTest().str("name"), engine, req, resp, setup.getTest().asString("Content-Language"), fp, ext);
+      expand(setup.getTest().str("name"), engine, req, resp, setup.getTest().asString("Accept-Language"), fp, ext);
     } else if (setup.getTest().asString("operation").equals("validate-code")) {
-      String diff = TxServiceTestHelper.getDiffForValidation(setup.getTest().str("name"), engine.getContext(), setup.getTest().asString("name"), req, resp, setup.getTest().asString("Content-Language"), fp, ext, false);
+      String diff = TxServiceTestHelper.getDiffForValidation(setup.getTest().str("name"), engine.getContext(), setup.getTest().asString("name"), req, resp, setup.getTest().asString("Accept-Language"), fp, ext, false, modes());
       assertNull(diff, diff);
     } else if (setup.getTest().asString("operation").equals("cs-validate-code")) {
-      String diff = TxServiceTestHelper.getDiffForValidation(setup.getTest().str("name"), engine.getContext(), setup.getTest().asString("name"), req, resp, setup.getTest().asString("Content-Language"), fp, ext, true);
+      String diff = TxServiceTestHelper.getDiffForValidation(setup.getTest().str("name"), engine.getContext(), setup.getTest().asString("name"), req, resp, setup.getTest().asString("Accept-Language"), fp, ext, true, modes());
       assertNull(diff, diff);
-    } else if (Utilities.existsInList(setup.getTest().asString("operation"), "lookup", "translate")) {
+    } else if (Utilities.existsInList(setup.getTest().asString("operation"), "lookup", "translate", "metadata", "term-caps")) {
       Assertions.assertTrue(true); // we don't test these for the internal server
     } else {
       Assertions.fail("Unknown Operation "+ setup.getTest().asString("operation"));
@@ -123,7 +125,12 @@ private static TxTestData testData;
 
   private void expand(String id, ValidationEngine engine, Resource req, String resp, String lang, String fp, JsonObject ext) throws IOException {
     org.hl7.fhir.r5.model.Parameters p = ( org.hl7.fhir.r5.model.Parameters) req;
-    ValueSet vs = engine.getContext().fetchResource(ValueSet.class, p.getParameterValue("url").primitiveValue());
+    ValueSet vs;
+    if (p.hasParameter("valueSetVersion")) {      
+      vs = engine.getContext().fetchResource(ValueSet.class, p.getParameterValue("url").primitiveValue(), p.getParameterValue("valueSetVersion").primitiveValue());
+    } else {
+      vs = engine.getContext().fetchResource(ValueSet.class, p.getParameterValue("url").primitiveValue());
+    }
     boolean hierarchical = p.hasParameter("excludeNested") ? p.getParameterBool("excludeNested") == false : true;
     Assertions.assertNotNull(vs);
     if (lang != null && !p.hasParameter("displayLanguage")) {
@@ -140,7 +147,7 @@ private static TxTestData testData;
         TxTesterSorters.sortValueSet(vse.getValueset());
         TxTesterScrubbers.scrubVS(vse.getValueset(), false);
         String vsj = new JsonParser().setOutputStyle(OutputStyle.PRETTY).composeString(vse.getValueset());
-        String diff = CompareUtilities.checkJsonSrcIsSame(id, resp, vsj, ext);
+        String diff = new CompareUtilities(modes(), ext).checkJsonSrcIsSame(id, resp, vsj);
         if (diff != null) {
           Utilities.createDirectory(Utilities.getDirectoryForFile(fp));
           TextFile.stringToFile(vsj, fp);        
@@ -179,6 +186,9 @@ private static TxTestData testData;
       case UNKNOWN:
         e.setCode(IssueType.UNKNOWN);
         break;
+      case VALUESET_UNKNOWN:
+        e.setCode(IssueType.UNKNOWN);
+        break;
       case VALUESET_UNSUPPORTED:
         e.setCode(IssueType.NOTSUPPORTED);
         break;
@@ -189,13 +199,19 @@ private static TxTestData testData;
       TxTesterScrubbers.scrubOO(oo, false);
 
       String ooj = new JsonParser().setOutputStyle(OutputStyle.PRETTY).composeString(oo);
-      String diff = CompareUtilities.checkJsonSrcIsSame(id, resp, ooj, ext);
+      String diff = new CompareUtilities(modes(), ext).checkJsonSrcIsSame(id, resp, ooj);
       if (diff != null) {
         Utilities.createDirectory(Utilities.getDirectoryForFile(fp));
         TextFile.stringToFile(ooj, fp);        
       }
       Assertions.assertTrue(diff == null, diff);
     }
+  }
+
+  private Set<String> modes() {
+    Set<String> modes = new HashSet<String>();
+    modes.add("tx.fhir.org");
+    return modes;
   }
 
   private void removeParameter(ValueSet valueset, String name) {
@@ -210,7 +226,7 @@ private static TxTestData testData;
 
 
   public Resource loadResource(String filename) throws IOException, FHIRFormatError, FileNotFoundException, FHIRException, DefinitionException {
-    String contents = TestingUtilities.loadTestResource("tx", filename);
+    String contents = testData.load(filename);
     try (InputStream inputStream = IOUtils.toInputStream(contents, Charsets.UTF_8)) {
       if (filename.contains(".json")) {
         if (Constants.VERSION.equals(version) || "5.0".equals(version))

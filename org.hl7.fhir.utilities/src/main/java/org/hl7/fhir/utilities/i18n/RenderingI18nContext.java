@@ -1,5 +1,6 @@
 package org.hl7.fhir.utilities.i18n;
 
+
 public class RenderingI18nContext extends I18nBase {
 
   public static final String ACTOR_DEF_ACT = "ACTOR_DEF_ACT";
@@ -78,6 +79,7 @@ public class RenderingI18nContext extends I18nBase {
   public static final String CAPABILITY_CREATE_INT = "CAPABILITY_CREATE_INT";
   public static final String GENERAL_CRIT = "GENERAL_CRIT";
   public static final String CAPABILITY_DELETE_INT = "CAPABILITY_DELETE_INT";
+  public static final String CAPABILITY_ERR_DET = "CAPABILITY_ERR_DET";
   public static final String CAPABILITY_EXT_OP = "CAPABILITY_EXT_OP";
   public static final String CAPABILITY_FHIR = "CAPABILITY_FHIR";
   public static final String CAPABILITY_FHIR_VER = "CAPABILITY_FHIR_VER";
@@ -88,6 +90,8 @@ public class RenderingI18nContext extends I18nBase {
   public static final String CAPABILITY_INTER_SUPP = "CAPABILITY_INTER_SUPP";
   public static final String CAPABILITY_INT_DESC = "CAPABILITY_INT_DESC";
   public static final String CAPABILITY_INT_SUMM = "CAPABILITY_INT_SUMM";
+  public static final String CAPABILITY_MAY_SUPP = "CAPABILITY_MAY_SUPP";
+  public static final String CAPABILITY_MULT_EXT = "CAPABILITY_MULT_EXT";
   public static final String CAPABILITY_NOTE_CAP = "CAPABILITY_NOTE_CAP";
   public static final String CAPABILITY_OP = "CAPABILITY_OP";
   public static final String CAPABILITY_OPER = "CAPABILITY_OPER";
@@ -99,6 +103,7 @@ public class RenderingI18nContext extends I18nBase {
   public static final String CAPABILITY_PATCH_INT = "CAPABILITY_PATCH_INT";
   public static final String GENERAL_PROF = "GENERAL_PROF";
   public static final String CAPABILITY_PROF_CONF = "CAPABILITY_PROF_CONF";
+  public static final String CAPABILITY_PROF_RES_DOC = "CAPABILITY_PROF_RES_DOC";
   public static final String CAPABILITY_PROF_MAP = "CAPABILITY_PROF_MAP";
   public static final String CAPABILITY_PUB_BY = "CAPABILITY_PUB_BY";
   public static final String CAPABILITY_PUB_ON = "CAPABILITY_PUB_ON";
@@ -106,6 +111,9 @@ public class RenderingI18nContext extends I18nBase {
   public static final String CAPABILITY_REF_PROF = "CAPABILITY_REF_PROF";
   public static final String CAPABILITY_REQ_RECOM = "CAPABILITY_REQ_RECOM";
   public static final String CAPABILITY_REST_CAPS = "CAPABILITY_REST_CAPS";
+  public static final String CAPABILITY_DOCUMENT_CAPS = "CAPABILITY_DOCUMENT_CAPS";
+  public static final String CAPABILITY_MESSAGING_CAPS = "CAPABILITY_MESSAGING_CAPS";
+  public static final String CAPABILITY_MESSAGING_CAP = "CAPABILITY_MESSAGING_CAP";
   public static final String CAPABILITY_REST_CONFIG = "CAPABILITY_REST_CONFIG";
   public static final String CAPABILITY_RES_CONF = "CAPABILITY_RES_CONF";
   public static final String CAPABILITY_RES_ENB = "CAPABILITY_RES_ENB";
@@ -126,7 +134,10 @@ public class RenderingI18nContext extends I18nBase {
   public static final String CAPABILITY_SUPP_FORM = "CAPABILITY_SUPP_FORM";
   public static final String CAPABILITY_SUPP_PATCH_FORM = "CAPABILITY_SUPP_PATCH_FORM";
   public static final String CAPABILITY_SUPP_PROFS = "CAPABILITY_SUPP_PROFS";
+  public static final String CAPABILITY_SUPP_MSGS = "CAPABILITY_SUPP_MSGS";
+  public static final String CAPABILITY_ENDPOINTS = "CAPABILITY_ENDPOINTS";
   public static final String CAPABILITY_SUPP_THE = "CAPABILITY_SUPP_THE";
+  public static final String CAPABILITY_SUPPS_THE = "CAPABILITY_SUPPS_THE";
   public static final String GENERAL_TYPE = "GENERAL_TYPE";
   public static final String CAPABILITY_TYPS = "CAPABILITY_TYPS";
   public static final String CAPABILITY_TYP_PRES = "CAPABILITY_TYP_PRES";
@@ -175,8 +186,6 @@ public class RenderingI18nContext extends I18nBase {
   public static final String CONC_MAP_FROM = "CONC_MAP_FROM";
   public static final String CONC_MAP_GRP = "CONC_MAP_GRP";
   public static final String CONC_MAP_NOT_SPEC = "CONC_MAP_NOT_SPEC";
-  public static final String CONC_MAP_NO_PROD_USE = "CONC_MAP_NO_PROD_USE";
-  public static final String CONC_MAP_PUB_ON = "CONC_MAP_PUB_ON"; 
   public static final String CONC_MAP_REL = "CONC_MAP_REL";
   public static final String CONC_MAP_SOURCE = "CONC_MAP_SOURCE";
   public static final String CONC_MAP_SRC_DET = "CONC_MAP_SRC_DET";
@@ -204,6 +213,7 @@ public class RenderingI18nContext extends I18nBase {
   public static final String DATA_REND_DATA = "DATA_REND_DATA";
   public static final String DATA_REND_DETAILS = "DATA_REND_DETAILS";
   public static final String DATA_REND_DETAILS_STATED = "DATA_REND_DETAILS_STATED";
+  public static final String DATA_REND_DETAILS_STATED_ND = "DATA_REND_DETAILS_STATED_ND";
   public static final String DATA_REND_DICOM = "DATA_REND_DICOM";
   public static final String DATA_REND_DIM = "DATA_REND_DIM";
   public static final String DATA_REND_DURATION = "DATA_REND_DURATION";
@@ -240,6 +250,7 @@ public class RenderingI18nContext extends I18nBase {
   public static final String DATA_REND_TIMING = "DATA_REND_TIMING";
   public static final String DATA_REND_TO_DO = "DATA_REND_TO_DO";
   public static final String GENERAL_UCUM = "GENERAL_UCUM";
+  public static final String GENERAL_NCI_THES = "GENERAL_NCI_THES";
   public static final String DATA_REND_UNKNWN = "DATA_REND_UNKNWN";
   public static final String DATA_REND_UNRD_EX = "DATA_REND_UNRD_EX";
   public static final String DATA_REND_UNTIL = "DATA_REND_UNTIL";
@@ -288,7 +299,6 @@ public class RenderingI18nContext extends I18nBase {
   public static final String EX_SCEN_TIME = "EX_SCEN_TIME";
   public static final String EX_SCEN_UN = "EX_SCEN_UN";
   public static final String EX_SCEN_UN_ACT = "EX_SCEN_UN_ACT";
-  public static final String EX_SCEN_UN_INST = "EX_SCEN_UN_INST";
   public static final String GENERAL_VER_LOW = "GENERAL_VER_LOW";
   public static final String IMP_GUIDE_URL = "IMP_GUIDE_URL";
   public static final String LIB_REND_ART = "LIB_REND_ART";
@@ -321,6 +331,8 @@ public class RenderingI18nContext extends I18nBase {
   public static final String OBLIG_ELE = "OBLIG_ELE";
   public static final String GENERAL_OBLIG = "GENERAL_OBLIG";
   public static final String GENERAL_BINDING = "GENERAL_BINDING";
+  public static final String GENERAL_BINDING_NO_VS = "GENERAL_BINDING_NO_VS";
+  public static final String GENERAL_BINDING_NO_DESC = "GENERAL_BINDING_NO_DESC";
   public static final String GENERAL_CARDINALITY = "GENERAL_CARDINALITY";
   public static final String OP_DEF_INPAR = "OP_DEF_INPAR";
   public static final String OP_DEF_OFFIC = "OP_DEF_OFFIC";
@@ -429,6 +441,7 @@ public class RenderingI18nContext extends I18nBase {
   public static final String QUEST_LINKID = "QUEST_LINKID";
   public static final String QUEST_MAND = "QUEST_MAND";
   public static final String GENERAL_MAX_LENGTH = "GENERAL_MAX_LENGTH";
+  public static final String GENERAL_MIN_LENGTH = "GENERAL_MIN_LENGTH";
   public static final String QUEST_MAX_LENGTH = "QUEST_MAX_LENGTH";
   public static final String QUEST_NLM = "QUEST_NLM";
   public static final String QUEST_NONE_SPEC = "QUEST_NONE_SPEC";
@@ -852,6 +865,10 @@ public class RenderingI18nContext extends I18nBase {
   public static final String VALUE_SET_EXP = "VALUE_SET_EXP";
   public static final String VALUE_SET_EXPANSION = "VALUE_SET_EXPANSION";
   public static final String VALUE_SET_EXPANSIONS = "VALUE_SET_EXPANSIONS";
+  public static final String VALUE_SET_EXPANSION_SRVR = "VALUE_SET_EXPANSION_SRVR";
+  public static final String VALUE_SET_EXPANSIONS_SRVR = "VALUE_SET_EXPANSIONS_SRVR";
+  public static final String VALUE_SET_EXPANSION_INTERNAL = "VALUE_SET_EXPANSION_INTERNAL";
+  public static final String VALUE_SET_EXPANSIONS_INTERNAL = "VALUE_SET_EXPANSIONS_INTERNAL";
   public static final String VALUE_SET_EXP_FRAG = "VALUE_SET_EXP_FRAG";
   public static final String VALUE_SET_GENERALIZES = "VALUE_SET_GENERALIZES";
   public static final String VALUE_SET_HAS = "VALUE_SET_HAS";
@@ -893,6 +910,23 @@ public class RenderingI18nContext extends I18nBase {
   public static final String VALUE_SET_USED_ELSEWHERE = "VALUE_SET_USED_ELSEWHERE";
   public static final String VALUE_SET_WHERE = "VALUE_SET_WHERE"; 
   public static final String VALUE_SET_WHERE_CODES = "VALUE_SET_WHERE_CODES";
+  public static final String VALUE_SET_AR = "VALUE_SET_AR";
+  public static final String VALUE_SET_AT = "VALUE_SET_AT";
+  public static final String VALUE_SET_BE = "VALUE_SET_BE";
+  public static final String VALUE_SET_CA_EN = "VALUE_SET_CA_EN";
+  public static final String VALUE_SET_CA_FR = "VALUE_SET_CA_FR";
+  public static final String VALUE_SET_EE = "VALUE_SET_EE";
+  public static final String VALUE_SET_FI = "VALUE_SET_FI";
+  public static final String VALUE_SET_DE = "VALUE_SET_DE";
+  public static final String VALUE_SET_IE = "VALUE_SET_IE";
+  public static final String VALUE_SET_NZ = "VALUE_SET_NZ";
+  public static final String VALUE_SET_NO = "VALUE_SET_NO";
+  public static final String VALUE_SET_KR = "VALUE_SET_KR";
+  public static final String VALUE_ES_ES = "VALUE_ES_ES";
+  public static final String VALUE_SET_CH = "VALUE_SET_CH";
+  public static final String VALUE_SET_UK_CLIN = "VALUE_SET_UK_CLIN";
+  public static final String VALUE_SET_UY = "VALUE_SET_UY";
+  public static final String VALUE_SET_US_ICD10CM = "VALUE_SET_US_ICD10CM";
   public static final String VS_ABSTRACT_CODE_HINT = "VS_ABSTRACT_CODE_HINT";
   public static final String GENERAL_CODE = "GENERAL_CODE";
   public static final String GENERAL_DESC = "GENERAL_DESC";
@@ -905,7 +939,34 @@ public class RenderingI18nContext extends I18nBase {
   public static final String DATA_REND_ATT_URL = "DATA_REND_ATT_URL";
   public static final String DATA_REND_ATT_DATA = "DATA_REND_ATT_DATA";
   public static final String GENERAL_DATA_DISPLAY_PROPERTY = "GENERAL_DATA_DISPLAY_PROPERTY";
-  
+  public static final String DATA_REND_CURRENCY = "DATA_REND_CURRENCY";
+  public static final String _NA = "_NA";
+  public static final String FMM_TABLE = "FMM_TABLE";
+  public static final String KIND_EXTENSION = "KIND_EXTENSION";
+  public static final String KIND_LOGICAL = "KIND_LOGICAL";
+  public static final String KIND_PROFILE = "KIND_PROFILE";
+  public static final String IP_NONE = "IP_NONE";
+  public static final String IP_NONE_EXT = "IP_NONE_EXT";
+  public static final String IP_INTRO = "IP_INTRO";
+  public static final String MATURITY_PUBLISHER = "MATURITY_PUBLISHER";
+  public static final String MATURITY_STATUS = "MATURITY_STATUS";
+  public static final String MATURITY_MATURITY = "MATURITY_MATURITY";
+  public static final String MATURITY_STDS_STATUS = "MATURITY_STDS_STATUS";
+
+  public static final String DATA_REND_MORNING = "DATA_REND_MORNING";
+  public static final String DATA_REND_MORNING_EARLY = "DATA_REND_MORNING_EARLY";
+  public static final String DATA_REND_MORNING_LATE = "DATA_REND_MORNING_LATE";
+  public static final String DATA_REND_NOON = "DATA_REND_NOON";
+  public static final String DATA_REND_AFTERNOON = "DATA_REND_AFTERNOON";
+  public static final String DATA_REND_AFTERNOON_EARLY = "";
+  public static final String DATA_REND_AFTERNOON_LATE = "DATA_REND_AFTERNOON_LATE";
+  public static final String DATA_REND_EVENING = "DATA_REND_EVENING";
+  public static final String DATA_REND_EVENING_EARLY = "";
+  public static final String DATA_REND_EVENING_LATE = "DATA_REND_EVENING_LATE";
+  public static final String DATA_REND_NIGHT = "DATA_REND_NIGHT";
+  public static final String DATA_REND_AFTER_SLEEP = "DATA_REND_AFTER_SLEEP";
+  public static final String DATA_REND_IMMEDIATE = "DATA_REND_IMMEDIATE";
+
   protected String getMessagesSourceFileName() {
     return "rendering-phrases";
   }
@@ -923,4 +984,5 @@ public class RenderingI18nContext extends I18nBase {
   public String formatPhrasePlural(Integer plural, String theMessage, Object... theMessageArguments) {
     return formatMessagePlural(plural, theMessage, theMessageArguments);
   }
+
 }

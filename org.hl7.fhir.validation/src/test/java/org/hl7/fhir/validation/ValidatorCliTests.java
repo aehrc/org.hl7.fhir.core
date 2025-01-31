@@ -75,6 +75,12 @@ public class ValidatorCliTests {
     @Override
     public void executeTask(CliContext cliContext, String[] args, TimeTracker tt, TimeTracker.Session tts) {}
   };
+  
+
+  AiTestsTask aiTestsTask = new AiTestsTask() {
+    @Override
+    public void executeTask(CliContext cliContext, String[] args, TimeTracker tt, TimeTracker.Session tts) {}
+  };
   @Spy
   TransformTask transformTask;
 
@@ -82,6 +88,15 @@ public class ValidatorCliTests {
   VersionTask versionTask;
   @Spy
   ValidateTask validateTask;
+
+  @Spy
+  CodeGenTask codeGenTask;
+
+  @Spy
+  RePackageTask txPackTask;
+
+  @Spy
+  InstanceFactoryTask instanceFactoryTask;
 
   @Spy
   ScanTask scanTask = new ScanTask() {
@@ -116,8 +131,12 @@ public class ValidatorCliTests {
           spreadsheetTask,
           testsTask,
           txTestsTask,
+          aiTestsTask,
           transformTask,
           versionTask,
+          codeGenTask,
+          txPackTask,
+          instanceFactoryTask,
           //validate is the default
           validateTask
         );
@@ -314,6 +333,7 @@ public class ValidatorCliTests {
 
     Mockito.verify(txTestsTask).executeTask(same(cliContext), eq(args), any(TimeTracker.class), any(TimeTracker.Session.class));
   }
+
 
   @Test
   public void testsTest() throws Exception {

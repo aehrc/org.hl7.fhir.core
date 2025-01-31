@@ -1,6 +1,8 @@
 package org.hl7.fhir.r5.terminologies.client;
 
 import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -51,6 +53,8 @@ public class TerminologyClientContext {
     
   }
 
+  private static boolean canUseCacheId;
+
   private ITerminologyClient client;
   private boolean initialised = false;
   private CapabilityStatement capabilitiesStatementQuick;
@@ -83,8 +87,10 @@ public class TerminologyClientContext {
   }
 
   public void seeUse(Set<String> systems, TerminologyClientContextUseType useType) {
-    for (String s : systems) {
-      seeUse(s, useType);
+    if (systems != null) {
+      for (String s : systems) {
+        seeUse(s, useType);
+      }
     }
   }
   
@@ -180,7 +186,7 @@ public class TerminologyClientContext {
           txCache.cacheTerminologyCapabilities(getAddress(), txcaps);
         }
       }
-      if (txcaps != null) {
+      if (txcaps != null && TerminologyClientContext.canUseCacheId) {
         for (TerminologyCapabilitiesExpansionParameterComponent t : txcaps.getExpansion().getParameter()) {
           if ("cache-id".equals(t.getName())) {
             setTxCaching(true);
@@ -206,6 +212,22 @@ public class TerminologyClientContext {
   public String toString() {
     return client.getAddress();
   }
-  
+
+  public static boolean isCanUseCacheId() {
+    return canUseCacheId;
+  }
+
+  public static void setCanUseCacheId(boolean canUseCacheId) {
+    TerminologyClientContext.canUseCacheId = canUseCacheId;
+  }
+
+  public String getHost() {
+    try {
+      URL uri = new URL(getAddress());
+      return uri.getHost();
+    } catch (MalformedURLException e) {
+      return getAddress();
+    }
+  }
   
 }

@@ -10,6 +10,7 @@ import org.hl7.fhir.r5.model.Enumeration;
 import org.hl7.fhir.r5.model.Narrative;
 import org.hl7.fhir.r5.model.Property;
 import org.hl7.fhir.r5.model.Resource;
+import org.hl7.fhir.r5.utils.UserDataNames;
 import org.hl7.fhir.utilities.xhtml.NodeType;
 import org.hl7.fhir.utilities.xhtml.XhtmlNode;
 
@@ -86,8 +87,6 @@ public class ResourceWrapperNative extends ResourceWrapper {
       return ElementKind.DataType;
     } else if (!v.isResource()) {
       return ElementKind.BackboneElement;
-    } else if (parent == null) {
-      return ElementKind.IndependentResource;
     } else if ("Bundle.entry".equals(fhirType()) && "resource".equals(p.getName())) {
       return ElementKind.BundleEntry;
     } else if ("Bundle".equals(fhirType()) && "outcome".equals(p.getName())) {
@@ -145,7 +144,7 @@ public class ResourceWrapperNative extends ResourceWrapper {
   public void setNarrative(XhtmlNode x, String status, boolean multiLangMode, Locale locale, boolean isPretty) {
     if (element instanceof DomainResource) {
       DomainResource r = (DomainResource) element;    
-      r.getText().setUserData("renderer.generated", true);
+      r.getText().setUserData(UserDataNames.renderer_is_generated, true);
       if (!r.hasText() || !r.getText().hasDiv()) {
         r.setText(new Narrative());
         r.getText().setStatusAsString(status);      
@@ -159,7 +158,7 @@ public class ResourceWrapperNative extends ResourceWrapper {
           r.getText().getDiv().getChildNodes().removeIf(c -> !"div".equals(c.getName()) || !c.hasAttribute("xml:lang"));
         }
         markLanguage(x, locale);
-        r.getText().getDiv().getChildNodes().add(x);
+        r.getText().getDiv().addChildNode(x);
       } else {
         if (!x.hasAttribute("xmlns"))
           x.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
@@ -176,8 +175,8 @@ public class ResourceWrapperNative extends ResourceWrapper {
   }
 
   public void markLanguage(XhtmlNode x, Locale locale) {
-    x.setAttribute("lang", locale.toString());
-    x.setAttribute("xml:lang", locale.toString());
+    x.setAttribute("lang", locale.toLanguageTag());
+    x.setAttribute("xml:lang", locale.toLanguageTag());
     x.addTag(0, "hr");
     x.addTag(0, "p").b().tx(locale.getDisplayName());
     x.addTag(0, "hr");
@@ -231,6 +230,16 @@ public class ResourceWrapperNative extends ResourceWrapper {
       return ((Enumeration<?>) element).getSystem();
     }
     return null;
+  }
+
+  @Override
+  public boolean hasUserData(String name) {
+    return element.hasUserData(name);
+  }
+
+  @Override
+  public Object getUserData(String name) {
+    return element.getUserData(name);
   }
 
 }

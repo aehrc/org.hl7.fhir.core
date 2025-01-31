@@ -144,12 +144,12 @@ public class PatientRenderer extends ResourceRenderer {
       x.hr();
       XhtmlNode tbl;
       if (hasRenderablePhoto(pat)) {
-        tbl = x.table("none");
+        tbl = x.table("none", true);
         XhtmlNode tr = tbl.tr();
-        tbl = tr.td().table("grid");
+        tbl = tr.td().table("grid", false);
         renderPhoto(tr.td(), pat);
       } else {
-        tbl = x.table("grid");
+        tbl = x.table("grid", false);
       }
 
       // the table has 4 columns
@@ -230,15 +230,6 @@ public class PatientRenderer extends ResourceRenderer {
     case "usual": return false; 
     }
     return false;
-  }
-
-
-  private void addContained(RenderingStatus status, XhtmlNode x, List<ResourceWrapper> list) throws FHIRFormatError, DefinitionException, FHIRException, IOException, EOperationOutcome {
-    for (ResourceWrapper c : list) {
-      x.hr();
-      x.an(context.prefixAnchor(c.getId()));
-      RendererFactory.factory(c, context.forContained()).buildNarrative(status, x, c);
-    }
   }
 
   private void addExtensions(RenderingStatus status, XhtmlNode tbl, ResourceWrapper r) throws UnsupportedEncodingException, FHIRException, IOException {

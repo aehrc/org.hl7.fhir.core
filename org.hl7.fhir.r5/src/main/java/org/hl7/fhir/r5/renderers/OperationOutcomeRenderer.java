@@ -66,7 +66,7 @@ public class OperationOutcomeRenderer extends ResourceRenderer {
       x.para().tx(context.formatPhrase(RenderingContext.OP_OUT_OK));
     }
     if (op.has("issue")) { 
-      XhtmlNode tbl = x.table("grid"); // on the basis that we'll most likely be rendered using the standard fhir css, but it doesn't really matter 
+      XhtmlNode tbl = x.table("grid", false); // on the basis that we'll most likely be rendered using the standard fhir css, but it doesn't really matter 
       XhtmlNode tr = tbl.tr(); 
       tr.td().b().tx(context.formatPhrase(RenderingContext.OP_OUT_SEV)); 
       tr.td().b().tx(context.formatPhrase(RenderingContext.GENERAL_LOCATION)); 
@@ -88,8 +88,9 @@ public class OperationOutcomeRenderer extends ResourceRenderer {
             d = true; 
           td.addText(s.primitiveValue()); 
         } 
-        tr.td().addText(getTranslatedCode(i.child("code"))); 
-        tr.td().addText(i.child("details").primitiveValue("text")); 
+        tr.td().addText(getTranslatedCode(i.child("code")));
+        if (i.has("details"))
+          tr.td().addText(i.child("details").primitiveValue("text"));
         smartAddText(tr.td(), i.primitiveValue("diagnostics")); 
         if (hasSource) { 
           ResourceWrapper ext = i.extension(ToolingExtensions.EXT_ISSUE_SOURCE); 

@@ -71,6 +71,7 @@ import org.hl7.fhir.utilities.SystemExitManager;
 import org.hl7.fhir.utilities.TimeTracker;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.VersionUtilities;
+import org.hl7.fhir.utilities.http.ManagedWebAccess;
 import org.hl7.fhir.utilities.settings.FhirSettings;
 import org.hl7.fhir.validation.cli.model.CliContext;
 import org.hl7.fhir.validation.cli.services.ValidationService;
@@ -79,14 +80,19 @@ import org.hl7.fhir.validation.cli.utils.Display;
 import org.hl7.fhir.validation.cli.utils.Params;
 
 /**
- * A executable class that will validate one or more FHIR resources against
- * the specification
- * <p>
- * todo: schema validation (w3c xml, json schema, shex?)
- * <p>
- * if you want to host validation inside a process, skip this class, and look at
- * ValidationEngine
- * <p>
+ * A executable providing a Command Line Interface primarily for validating one or more FHIR resources against
+ * the specification.
+ * <p/>
+ * The CLI also supports other functionality, as documented in the CLI help:
+ * <code>src/main/resources/help/help.txt</code>
+ * <p/>
+ * Alternatively, the <a href="https://github.com/hapifhir/org.hl7.fhir.validator-wrapper.git">validator-wrapper</a>
+ * project provides similar functionality via a web-hosted service.
+ * <p/>
+ * For lower level use of FHIR validation in your own code, @ValidationEngine can be used directly. See the
+ * <a href="https://github.com/FHIR/fhir-core-examples">fhir-core-examples</a>  project for examples of this. Note that
+ * this is not the recommended path, and we are not able to guarantee support for this use case.
+ * <p/>
  * todo: find a home for this:
  *
  * @author Grahame
@@ -105,7 +111,7 @@ public class ValidatorCli {
   public static final String JAVA_DISABLED_PROXY_SCHEMES = "jdk.http.auth.proxying.disabledSchemes";
   public static final String JAVA_USE_SYSTEM_PROXIES = "java.net.useSystemProxies";
 
-  private static ValidationService validationService = new ValidationService();
+  private final static ValidationService validationService = new ValidationService();
 
   protected ValidationService myValidationService;
 
@@ -133,8 +139,12 @@ public class ValidatorCli {
       new SpreadsheetTask(),
       new TestsTask(),
       new TxTestsTask(),
+      new AiTestsTask(),
       new TransformTask(),
       new VersionTask(),
+      new CodeGenTask(),
+      new RePackageTask(),
+      new InstanceFactoryTask(),
       defaultCliTask);
   }
 
@@ -150,6 +160,7 @@ public class ValidatorCli {
     if (cliContext.getFhirSettingsFile() != null) {
       FhirSettings.setExplicitFilePath(cliContext.getFhirSettingsFile());
     }
+    ManagedWebAccess.loadFromFHIRSettings();
 
     FileFormat.checkCharsetAndWarnIfNotUTF8(System.out);
 
@@ -199,6 +210,9 @@ public class ValidatorCli {
   }
 
   public static void main(String[] args) throws Exception {
+    // Prevents SLF4J(I) from printing unnecessary info to the console.
+    System.setProperty("slf4j.internal.verbosity", "WARN");
+
     final ValidatorCli validatorCli = new ValidatorCli(validationService);
 
     args = addAdditionalParamsForIpsParam(args);
@@ -263,7 +277,7 @@ public class ValidatorCli {
         res.add("4.0");
         res.add("-check-ips-codes");
         res.add("-ig");
-        res.add("hl7.fhir.uv.ips#1.1.0");
+        res.add("hl7.fhir.uv.ips#2.0.0");
         res.add("-profile");
         res.add("http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips");
         res.add("-extension");
@@ -284,19 +298,6 @@ public class ValidatorCli {
         res.add("-bundle");
         res.add("Composition:0");
         res.add("http://hl7.org.au/fhir/ips/StructureDefinition/Composition-au-ips");
-      } else if (a.equals("-ips:nz")) {
-        res.add("-version");
-        res.add("4.0");
-        res.add("-check-ips-codes");
-        res.add("-ig");
-        res.add("tewhatuora.fhir.nzps#current");
-        res.add("-profile");
-        res.add("https://standards.digital.health.nz/fhir/StructureDefinition/nzps-bundle");
-        res.add("-extension");
-        res.add("any");
-        res.add("-bundle");
-        res.add("Composition:0");
-        res.add("https://standards.digital.health.nz/fhir/StructureDefinition/nzps-composition");
       } else if (a.equals("-ips#")) {
         res.add("-version");
         res.add("4.0");
@@ -376,6 +377,9 @@ public class ValidatorCli {
       ((StandaloneTask) cliTask).executeTask(cliContext,params,tt,tts);
     }
 
+    if (cliContext.getAdvisorFile() != null) {
+      System.out.println("Note: Some validation issues might be hidden by the advisor settings in the file "+cliContext.getAdvisorFile());      
+    }
     System.out.println("Done. " + tt.report()+". Max Memory = "+Utilities.describeSize(Runtime.getRuntime().maxMemory()));
     SystemExitManager.finish();
   }
@@ -408,8 +412,4 @@ public class ValidatorCli {
     return validationEngine;
   }
 
-  protected void validateScan(CliContext cliContext, ValidationEngine validator) throws Exception {
-    Scanner validationScanner = new Scanner(validator.getContext(), validator.getValidator(null), validator.getIgLoader(), validator.getFhirPathEngine());
-    validationScanner.validateScan(cliContext.getOutput(), cliContext.getSources());
-  }
 }

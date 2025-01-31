@@ -79,21 +79,21 @@ public class ResourceWrapperModel extends ResourceWrapper {
       return ElementKind.DataType;
     } else if (!child.isResource()) {
       return ElementKind.BackboneElement;
-    } else if (parent == null) {
-      return ElementKind.IndependentResource;
-    } else switch (child.getSpecial()) {
-    case BUNDLE_ENTRY:
-      return ElementKind.BundleEntry;
-    case BUNDLE_ISSUES:
-      return ElementKind.InlineResource;
-    case BUNDLE_OUTCOME:
-      return ElementKind.InlineResource;
-    case CONTAINED:
-      return ElementKind.ContainedResource;
-    case PARAMETER:
-      return ElementKind.InlineResource;
-    default:
-      return ElementKind.IndependentResource;
+    } else {
+      switch (child.getSpecial()) {
+      case BUNDLE_ENTRY:
+        return ElementKind.BundleEntry;
+      case BUNDLE_ISSUES:
+        return ElementKind.InlineResource;
+      case BUNDLE_OUTCOME:
+        return ElementKind.InlineResource;
+      case CONTAINED:
+        return ElementKind.ContainedResource;
+      case PARAMETER:
+        return ElementKind.InlineResource;
+      default:
+        return ElementKind.IndependentResource;
+      }
     }
   }
 
@@ -175,7 +175,7 @@ public class ResourceWrapperModel extends ResourceWrapper {
         xd.getChildNodes().removeIf(c -> !"div".equals(c.getName()) || !c.hasAttribute("xml:lang"));
       }
       markLanguage(x, locale);
-      xd.getChildNodes().add(x);
+      xd.addChildNode(x);
     } else {
       if (!x.hasAttribute("xmlns")) {
         x.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
@@ -192,8 +192,8 @@ public class ResourceWrapperModel extends ResourceWrapper {
   }
 
   public void markLanguage(XhtmlNode x, Locale locale) {
-    x.setAttribute("lang", locale.toString());
-    x.setAttribute("xml:lang", locale.toString());
+    x.setAttribute("lang", locale.toLanguageTag());
+    x.setAttribute("xml:lang", locale.toLanguageTag());
     x.addTag(0, "hr");
     x.addTag(0, "p").b().tx(locale.getDisplayName());
     x.addTag(0, "hr");
@@ -256,7 +256,7 @@ public class ResourceWrapperModel extends ResourceWrapper {
   }
 
   public String getWebPath() {
-    return null;
+    return model.getWebPath();
   }
 
   public String getCodeSystemUri() {
@@ -268,6 +268,16 @@ public class ResourceWrapperModel extends ResourceWrapper {
       } 
     }
     return null;
+  }
+
+  @Override
+  public boolean hasUserData(String name) {
+    return model.hasUserData(name);
+  }
+  
+  @Override
+  public Object getUserData(String name) {
+    return model.getUserData(name);
   }
 
 

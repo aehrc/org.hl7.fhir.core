@@ -11,7 +11,7 @@ import org.hl7.fhir.utilities.tests.TestConfig;
 import org.hl7.fhir.utilities.tests.TestConstants;
 import org.hl7.fhir.validation.ValidationEngine;
 import org.hl7.fhir.validation.cli.services.StandAloneValidatorFetcher;
-import org.hl7.fhir.validation.instance.BasePolicyAdvisorForFullValidation;
+import org.hl7.fhir.validation.instance.advisor.BasePolicyAdvisorForFullValidation;
 
 public class TestUtilities {
 
@@ -29,6 +29,8 @@ public class TestUtilities {
       .fromSource(src);
 
     TerminologyCache.setCacheErrors(true);
+    validationEngine.setLanguage("en-US");
+    validationEngine.setLocale(Locale.US);
     return validationEngine;
   }
 
@@ -45,7 +47,8 @@ public class TestUtilities {
       .withVersion(vString)
       .withUserAgent(TestConstants.USER_AGENT)
       .fromSource(src);
-
+    validationEngine.setLanguage("en-US");
+    validationEngine.setLocale(Locale.US);
     return validationEngine;
   }
   public static ValidationEngine getValidationEngine(java.lang.String src, java.lang.String txServer, FhirPublication version, java.lang.String vString) throws Exception {
@@ -66,7 +69,8 @@ public class TestUtilities {
         .fromSource(src);
       TerminologyCache.setCacheErrors(true);
     }
-
+    validationEngine.setLanguage("en-US");
+    validationEngine.setLocale(Locale.US);
     validationEngine.setPolicyAdvisor(new BasePolicyAdvisorForFullValidation(ReferenceValidationPolicy.IGNORE));
     return validationEngine;
   }

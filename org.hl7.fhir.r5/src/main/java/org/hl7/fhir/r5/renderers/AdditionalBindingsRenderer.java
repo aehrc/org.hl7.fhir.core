@@ -20,6 +20,7 @@ import org.hl7.fhir.r5.model.ValueSet;
 import org.hl7.fhir.r5.renderers.CodeResolver.CodeResolution;
 import org.hl7.fhir.r5.renderers.Renderer.RenderingStatus;
 import org.hl7.fhir.r5.renderers.utils.RenderingContext;
+import org.hl7.fhir.r5.utils.UserDataNames;
 import org.hl7.fhir.utilities.Utilities;
 import org.hl7.fhir.utilities.VersionUtilities;
 import org.hl7.fhir.utilities.xhtml.HierarchicalTableGenerator;
@@ -36,7 +37,7 @@ public class AdditionalBindingsRenderer {
     private String valueSet;
     private String doco;
     private String docoShort;
-    private UsageContext usage;
+    private List<UsageContext> usages = new ArrayList<UsageContext>();
     private boolean any = false;
     private boolean isUnchanged = false;
     private boolean matched = false;
@@ -72,7 +73,7 @@ public class AdditionalBindingsRenderer {
       isUnchanged = isUnchanged && ((valueSet==null && compare.valueSet==null) || valueSet.equals(compare.valueSet));
       isUnchanged = isUnchanged && ((doco==null && compare.doco==null) || doco.equals(compare.doco));
       isUnchanged = isUnchanged && ((docoShort==null && compare.docoShort==null) || docoShort.equals(compare.docoShort));
-      isUnchanged = isUnchanged && ((usage==null && compare.usage==null) || usage.equals(compare.usage));
+      isUnchanged = isUnchanged && ((usages==null && compare.usages==null) || usages.equals(compare.usages));
       return isUnchanged;
     }
   }
@@ -117,7 +118,7 @@ public class AdditionalBindingsRenderer {
       abr.compare = new AdditionalBindingDetail();
       abr.compare.valueSet = compExt==null ? null : compExt.getValue().primitiveValue();
     } else {
-      abr.isUnchanged = ext.hasUserData(ProfileUtilities.UD_DERIVATION_EQUALS);
+      abr.isUnchanged = ext.hasUserData(UserDataNames.SNAPSHOT_DERIVATION_EQUALS);
     }
     bindings.add(abr);
   }
@@ -174,10 +175,14 @@ public class AdditionalBindingsRenderer {
     abr.purpose =  ext.getExtensionString("purpose");
     abr.valueSet =  ext.getExtensionString("valueSet");
     abr.doco =  ext.getExtensionString("documentation");
-      abr.docoShort =  ext.getExtensionString("shortDoco");
-    abr.usage =  (ext.hasExtension("usage")) && ext.getExtensionByUrl("usage").hasValueUsageContext() ? ext.getExtensionByUrl("usage").getValueUsageContext() : null;
+    abr.docoShort =  ext.getExtensionString("shortDoco");
+    for (Extension x : ext.getExtensionsByUrl("usage")) {
+      if (x.hasValueUsageContext()) {
+        abr.usages.add(x.getValueUsageContext());
+      }
+    }
     abr.any = "any".equals(ext.getExtensionString("scope"));
-    abr.isUnchanged = ext.hasUserData(ProfileUtilities.UD_DERIVATION_EQUALS);
+    abr.isUnchanged = ext.hasUserData(UserDataNames.SNAPSHOT_DERIVATION_EQUALS);
     return abr;
   }
 
@@ -187,9 +192,9 @@ public class AdditionalBindingsRenderer {
     abr.valueSet =  ab.getValueSet();
     abr.doco =  ab.getDocumentation();
     abr.docoShort =  ab.getShortDoco();
-    abr.usage = ab.hasUsage() ? ab.getUsageFirstRep() : null;
+    abr.usages.addAll(ab.getUsage());
     abr.any = ab.getAny();
-    abr.isUnchanged = ab.hasUserData(ProfileUtilities.UD_DERIVATION_EQUALS);
+    abr.isUnchanged = ab.hasUserData(UserDataNames.SNAPSHOT_DERIVATION_EQUALS);
     return abr;
   }
 
@@ -220,7 +225,7 @@ public class AdditionalBindingsRenderer {
     boolean any = false;
     for (AdditionalBindingDetail binding : bindings) {
       doco = doco || binding.getDoco(fullDoco)!=null  || (binding.compare!=null && binding.compare.getDoco(fullDoco)!=null);
-      usage = usage || binding.usage != null || (binding.compare!=null && binding.compare.usage!=null);
+      usage = usage || !binding.usages.isEmpty() || (binding.compare!=null && !binding.compare.usages.isEmpty());
       any = any || binding.any || (binding.compare!=null && binding.compare.any);
     }
 
@@ -283,9 +288,12 @@ public class AdditionalBindingsRenderer {
         renderPurpose(purpose, binding.compare.purpose);
       }
       if (usage) {
-        if (binding.usage != null) {
-          // TODO: This isn't rendered at all yet.  Ideally, we want it to render with comparison...
-          new DataRenderer(context).renderBase(new RenderingStatus(), tr.td(), binding.usage);
+        if (!binding.usages.isEmpty()) {
+          XhtmlNode td = tr.td();
+          for (UsageContext uc : binding.usages) {
+            td.sep(", ");
+            new DataRenderer(context).renderBase(new RenderingStatus(), td, uc);
+          }
         } else {
           tr.td();          
         }

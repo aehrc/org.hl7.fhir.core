@@ -62,6 +62,7 @@ import org.hl7.fhir.r5.formats.JsonCreatorDirect;
 import org.hl7.fhir.r5.model.ElementDefinition.TypeRefComponent;
 import org.hl7.fhir.r5.model.ElementDefinition;
 import org.hl7.fhir.r5.model.StructureDefinition;
+import org.hl7.fhir.r5.utils.ToolingExtensions;
 import org.hl7.fhir.utilities.CommaSeparatedStringBuilder;
 import org.hl7.fhir.utilities.StringPair;
 import org.hl7.fhir.utilities.TextFile;
@@ -85,6 +86,8 @@ public class JsonParser extends ParserBase {
 
   private JsonCreator json;
   private boolean allowComments;
+  private boolean elideElements;
+//  private boolean suppressResourceType;
 
   private Element baseElement;
   private boolean markedXhtml;
@@ -467,7 +470,6 @@ public class JsonParser extends ParserBase {
             n.getChildren().add(nKey);
             nKey.setValue(pv.getName());
             
-
             boolean ok = true;
             Property pvl = propV;
             if (propV.isJsonPrimitiveChoice()) {
@@ -477,6 +479,9 @@ public class JsonParser extends ParserBase {
                 logError(errors, ValidationMessage.NO_RULE_DATE, line(pv.getValue()), col(pv.getValue()), path, IssueType.STRUCTURE, this.context.formatMessage(I18nConstants.UNRECOGNISED_PROPERTY_TYPE, describeType(pv.getValue()), propV.getName(), propV.typeSummary()), IssueSeverity.ERROR);
               } else if (propV.hasType(type)) {
                 pvl = new Property(propV.getContext(), propV.getDefinition(), propV.getStructure(), propV.getUtils(), propV.getContextUtils(), type);
+                ok = true;
+              } else if (propV.getDefinition().getType().size() == 1 && propV.typeIsConsistent(type)) {
+                pvl = new Property(propV.getContext(), propV.getDefinition(), propV.getStructure(), propV.getUtils(), propV.getContextUtils(), propV.getType());
                 ok = true;
               } else {
                 logError(errors, ValidationMessage.NO_RULE_DATE, line(pv.getValue()), col(pv.getValue()), path, IssueType.STRUCTURE, this.context.formatMessage(I18nConstants.UNRECOGNISED_PROPERTY_TYPE_WRONG, describeType(pv.getValue()), propV.getName(), type, propV.typeSummary()), IssueSeverity.ERROR);
@@ -499,7 +504,7 @@ public class JsonParser extends ParserBase {
         }
       }
     } else {
-      if (property.isList()) {
+      if (property.isJsonList()) {
         logError(errors, ValidationMessage.NO_RULE_DATE, line(e), col(e), npath, IssueType.INVALID, context.formatMessage(I18nConstants.THIS_PROPERTY_MUST_BE_AN_ARRAY_NOT_, describe(e), name, path), IssueSeverity.ERROR);
       }
       parseChildComplexInstance(errors, npath, fpath, element, property, name, e, null, null, null);
@@ -568,7 +573,8 @@ public class JsonParser extends ParserBase {
       n.setNull(true);
       // nothing to do, it's ok, but we treat it like it doesn't exist
     } else {
-      logError(errors, ValidationMessage.NO_RULE_DATE, line(e), col(e), npath, IssueType.INVALID, context.formatMessage(I18nConstants.THIS_PROPERTY_MUST_BE__NOT_, (property.isList() ? "an Array" : "an Object"), describe(e), name, npath), IssueSeverity.ERROR);
+      String msg = context.formatMessage(I18nConstants.THIS_PROPERTY_MUST_BE__NOT_, (property.isList() ? "an Array" : "an Object"), describe(e), name, npath);
+      logError(errors, ValidationMessage.NO_RULE_DATE, line(e), col(e), npath, IssueType.INVALID, msg, IssueSeverity.ERROR);
     }
     return null;
   }
@@ -605,7 +611,7 @@ public class JsonParser extends ParserBase {
       logError(errors, "2022-11-26", line(main.getValue()), col(main.getValue()), path, IssueType.INVALID, context.formatMessage(I18nConstants.JSON_PROPERTY_VALUE_NO_QUOTES, main.getName(), main.getValue().asString()), IssueSeverity.ERROR);
     }
     if (main != null || fork != null) {
-      if (property.isList()) {
+      if (property.isJsonList()) {
         boolean ok = true;
         if (!(main == null || main.getValue() instanceof JsonArray)) {
           logError(errors, ValidationMessage.NO_RULE_DATE, line(main.getValue()), col(main.getValue()), npath, IssueType.INVALID, context.formatMessage(I18nConstants.THIS_PROPERTY_MUST_BE_AN_ARRAY_NOT_, describe(main.getValue()), name, path), IssueSeverity.ERROR);
@@ -782,7 +788,9 @@ public class JsonParser extends ParserBase {
     }
     checkComposeComments(e);
     json.beginObject();
-    prop("resourceType", e.getType(), null);
+    if (!isSuppressResourceType(e.getProperty())) {
+      prop("resourceType", e.getType(), null);
+    }
     Set<String> done = new HashSet<String>();
     for (Element child : e.getChildren()) {
       compose(e.getName(), e, done, child);
@@ -790,6 +798,15 @@ public class JsonParser extends ParserBase {
     json.endObject();
     json.finish();
     osw.flush();
+  }
+
+  private boolean isSuppressResourceType(Property property) {
+    StructureDefinition sd = property.getStructure();
+    if (sd != null && sd.hasExtension(ToolingExtensions.EXT_SUPPRESS_RESOURCE_TYPE)) {
+      return ToolingExtensions.readBoolExtension(sd, ToolingExtensions.EXT_SUPPRESS_RESOURCE_TYPE);
+    } else {
+      return false;
+    }
   }
 
   private void checkComposeComments(Element e) {
@@ -807,7 +824,9 @@ public class JsonParser extends ParserBase {
     checkComposeComments(e);
     json.beginObject();
 
-    prop("resourceType", e.getType(), linkResolver == null ? null : linkResolver.resolveProperty(e.getProperty()));
+    if (!isSuppressResourceType(e.getProperty())) {
+      prop("resourceType", e.getType(), linkResolver == null ? null : linkResolver.resolveProperty(e.getProperty()));
+    }
     Set<String> done = new HashSet<String>();
     for (Element child : e.getChildren()) {
       compose(e.getName(), e, done, child);
@@ -821,15 +840,66 @@ public class JsonParser extends ParserBase {
     if (wantCompose(path, child)) {
       boolean isList = child.hasElementProperty() ? child.getElementProperty().isList() : child.getProperty().isList();
       if (!isList) {// for specials, ignore the cardinality of the stated type
-        compose(path, child);
+        if (child.isElided() && isElideElements() && json.canElide())
+          json.elide();
+        else
+          compose(path, child);
       } else if (!done.contains(child.getName())) {
         done.add(child.getName());
         List<Element> list = e.getChildrenByName(child.getName());
-        composeList(path, list);
+        boolean skipList = false;
+        if (json.canElide() && isElideElements()) {
+          boolean foundNonElide = false;
+          for (Element listElement: list) {
+            if (!listElement.isElided()) {
+              foundNonElide = true;
+              break;
+            }
+          }
+          if (!foundNonElide) {
+            json.elide();
+            skipList = true;
+          }
+        }
+        if (!skipList) {
+          if (child.getProperty().getDefinition().hasExtension(ToolingExtensions.EXT_JSON_PROP_KEY))
+            composeKeyList(path, list);
+          else
+            composeList(path, list);
+        }
       }
     }
   }
 
+  private void composeKeyList(String path, List<Element> list) throws IOException {
+    String keyName = list.get(0).getProperty().getDefinition().getExtensionString(ToolingExtensions.EXT_JSON_PROP_KEY);
+    json.name(list.get(0).getName());
+    json.beginObject();
+    for (Element e: list) {
+      Element key = null;
+      Element value = null;
+      for (Element child: e.getChildren()) {
+        if (child.getName().equals(keyName))
+          key = child;
+        else
+          value = child;
+      }
+      if (value.isPrimitive())
+        primitiveValue(key.getValue(), value);
+      else {
+        json.name(key.getValue());
+        checkComposeComments(e);
+        json.beginObject();
+        Set<String> done = new HashSet<String>();
+        for (Element child : value.getChildren()) {
+          compose(value.getName(), value, done, child);
+        }
+        json.endObject();
+        compose(path + "." + key.getValue(), value);
+      }
+    }
+    json.endObject();
+  }
 
   private void composeList(String path, List<Element> list) throws IOException {
     // there will be at least one element
@@ -847,7 +917,9 @@ public class JsonParser extends ParserBase {
       if (prim) {
         openArray(name, linkResolver == null ? null : linkResolver.resolveProperty(list.get(0).getProperty()));
         for (Element item : list) {
-          if (item.hasValue()) {
+          if (item.isElided() && json.canElide())
+            json.elide();
+          else if (item.hasValue()) {
             if (linkResolver != null && item.getProperty().isReference()) {
               String ref = linkResolver.resolveReference(getReferenceForElement(item));
               if (ref != null) {
@@ -866,9 +938,11 @@ public class JsonParser extends ParserBase {
       openArray(name, linkResolver == null ? null : linkResolver.resolveProperty(list.get(0).getProperty()));
       int i = 0;
       for (Element item : list) {
-        if (item.hasChildren()) {
+        if (item.isElided() && json.canElide())
+          json.elide();
+        else if (item.hasChildren()) {
           open(null,null);
-          if (item.getProperty().isResource()) {
+          if (item.getProperty().isResource() && !isSuppressResourceType(item.getProperty())) {
             prop("resourceType", item.getType(), linkResolver == null ? null : linkResolver.resolveType(item.getType()));
           }
           if (linkResolver != null && item.getProperty().isReference()) {
@@ -898,18 +972,19 @@ public class JsonParser extends ParserBase {
       json.name(name);
     }
     String type = item.getType();
-    if (Utilities.existsInList(type, "boolean"))
+    if (Utilities.existsInList(type, "boolean")) {
       json.value(item.getValue().trim().equals("true") ? new Boolean(true) : new Boolean(false));
-    else if (Utilities.existsInList(type, "integer", "unsignedInt", "positiveInt"))
+    } else if (Utilities.existsInList(type, "integer", "unsignedInt", "positiveInt")) {
       json.value(new Integer(item.getValue()));
-    else if (Utilities.existsInList(type, "decimal"))
+    } else if (Utilities.existsInList(type, "decimal")) {
       try {
         json.value(new BigDecimal(item.getValue()));
       } catch (Exception e) {
         throw new NumberFormatException(context.formatMessage(I18nConstants.ERROR_WRITING_NUMBER__TO_JSON, item.getValue()));
       }
-    else
+    } else {
       json.value(item.getValue());
+    }
   }
 
   private void compose(String path, Element element) throws IOException {
@@ -924,7 +999,7 @@ public class JsonParser extends ParserBase {
     }
     if (element.hasChildren()) {
       open(name, linkResolver == null ? null : linkResolver.resolveProperty(element.getProperty()));
-      if (element.getProperty().isResource()) {
+      if (element.getProperty().isResource() && !isSuppressResourceType(element.getProperty())) {
         prop("resourceType", element.getType(), linkResolver == null ? null : linkResolver.resolveType(element.getType()));
       }
       if (linkResolver != null && element.getProperty().isReference()) {
@@ -933,9 +1008,10 @@ public class JsonParser extends ParserBase {
           json.externalLink(ref);
         }
       }
+
       Set<String> done = new HashSet<String>();
       for (Element child : element.getChildren()) {
-        compose(path+"."+element.getName(), element, done, child);
+        compose(path + "." + element.getName(), element, done, child);
       }
       close();
     }
@@ -951,5 +1027,23 @@ public class JsonParser extends ParserBase {
     return this;
   }
 
+  public boolean isElideElements() {
+    return elideElements;
+  }
+
+  public JsonParser setElideElements(boolean elideElements) {
+    this.elideElements = elideElements;
+    return this;
+  }
+/*
+  public boolean isSuppressResourceType() {
+    return suppressResourceType;
+  }
+
+  public JsonParser setSuppressResourceType(boolean suppressResourceType) {
+    this.suppressResourceType = suppressResourceType;
+    return this;
+  }
+*/
 
 }

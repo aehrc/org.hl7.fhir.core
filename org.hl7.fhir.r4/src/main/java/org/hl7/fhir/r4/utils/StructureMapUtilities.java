@@ -252,6 +252,10 @@ public class StructureMapUtilities {
       throw new Error("Not Implemented Yet");
     }
 
+    @Override
+    public boolean paramIsType(String name, int index) {
+      return false;
+    }
   }
 
   private IWorkerContext worker;
@@ -751,7 +755,7 @@ public class StructureMapUtilities {
   }
 
   public StructureMap parse(String text, String srcName) throws FHIRException {
-    FHIRLexer lexer = new FHIRLexer(text, srcName);
+    FHIRLexer lexer = new FHIRLexer(text, srcName, true, true);
     if (lexer.done())
       throw lexer.error("Map Input cannot be empty");
     lexer.skipComments();
@@ -2900,7 +2904,7 @@ public class StructureMapUtilities {
         expr = fpe.parse(getParamString(vars, tgt.getParameter().get(tgt.getParameter().size() - 1)));
         tgt.setUserData(MAP_WHERE_EXPRESSION, expr);
       }
-      return fpe.check(vars, null, expr);
+      return fpe.check(vars, "Resource", null, expr);
 
 ////case TRUNCATE : 
 ////  String src = getParamString(vars, tgt.getParameter().get(0));

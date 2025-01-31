@@ -6,6 +6,7 @@ import java.util.Arrays;
 import java.util.Locale;
 
 import org.hl7.fhir.exceptions.FHIRException;
+import org.hl7.fhir.r5.elementmodel.Manager.FhirFormat;
 import org.hl7.fhir.r5.terminologies.JurisdictionUtilities;
 import org.hl7.fhir.r5.utils.validation.BundleValidationRule;
 import org.hl7.fhir.r5.utils.validation.constants.BestPracticeWarningLevel;
@@ -30,10 +31,16 @@ public class Params {
   public static final String HTTPS_PROXY = "-https-proxy";
   public static final String PROXY_AUTH = "-auth";
   public static final String PROFILE = "-profile";
+  public static final String PROFILES = "-profiles";
+  public static final String CONFIG = "-config";
+  public static final String OPTION = "-option";
+  public static final String OPTIONS = "-options";
   public static final String BUNDLE = "-bundle";
   public static final String QUESTIONNAIRE = "-questionnaire";
   public static final String NATIVE = "-native";
   public static final String ASSUME_VALID_REST_REF = "-assumeValidRestReferences";
+  public static final String CHECK_REFERENCES = "-check-references";
+  public static final String RESOLUTION_CONTEXT = "-resolution-context";
   public static final String DEBUG = "-debug";
   public static final String SCT = "-sct";
   public static final String RECURSE = "-recurse";
@@ -42,11 +49,20 @@ public class Params {
   public static final String EXTENSION = "-extension";
   public static final String HINT_ABOUT_NON_MUST_SUPPORT = "-hintAboutNonMustSupport";
   public static final String TO_VERSION = "-to-version";
+  public static final String TX_PACK = "-tx-pack";
+  public static final String RE_PACK = "-re-package";
+  public static final String PACKAGE_NAME = "-package-name";
+  public static final String PIN = "-pin";
+  public static final String EXPAND = "-expand";
   public static final String DO_NATIVE = "-do-native";
   public static final String NO_NATIVE = "-no-native";
   public static final String COMPILE = "-compile";
+  public static final String CODEGEN = "-codegen";
+  public static final String FACTORY = "-factory";
   public static final String TRANSFORM = "-transform";
+  public static final String FORMAT = "-format";
   public static final String LANG_TRANSFORM = "-lang-transform";
+  public static final String EXP_PARAMS = "-expansion-parameters";
   public static final String NARRATIVE = "-narrative";
   public static final String SNAPSHOT = "-snapshot";
   public static final String INSTALL = "-install";
@@ -54,6 +70,8 @@ public class Params {
   public static final String TERMINOLOGY = "-tx";
   public static final String TERMINOLOGY_LOG = "-txLog";
   public static final String TERMINOLOGY_CACHE = "-txCache";
+  public static final String TERMINOLOGY_ROUTING = "-tx-routing";
+  public static final String TERMINOLOGY_CACHE_CLEAR = "-clear-tx-cache";
   public static final String LOG = "-log";
   public static final String LANGUAGE = "-language";
   public static final String IMPLEMENTATION_GUIDE = "-ig";
@@ -64,6 +82,7 @@ public class Params {
   public static final String FHIRPATH = "-fhirpath";
   public static final String TEST = "-tests";
   public static final String TX_TESTS = "-txTests";
+  public static final String AI_TESTS = "-aiTests";
   public static final String HELP = "help";
   public static final String COMPARE = "-compare";
   public static final String SPREADSHEET = "-spreadsheet";
@@ -80,11 +99,14 @@ public class Params {
   public static final String WANT_INVARIANTS_IN_MESSAGES = "-want-invariants-in-messages";
   public static final String SECURITY_CHECKS = "-security-checks";
   public static final String CRUMB_TRAIL = "-crumb-trails";
+  public static final String SHOW_MESSAGE_IDS = "-show-message-ids";
   public static final String FOR_PUBLICATION = "-forPublication";
+  public static final String AI_SERVICE = "-ai-service";
   public static final String VERBOSE = "-verbose";
   public static final String SHOW_TIMES = "-show-times";
   public static final String ALLOW_EXAMPLE_URLS = "-allow-example-urls";
   public static final String OUTPUT_STYLE = "-output-style";
+  public static final String ADVSIOR_FILE = "-advisor-file";
   public static final String DO_IMPLICIT_FHIRPATH_STRING_CONVERSION = "-implicit-fhirpath-string-conversions";
   public static final String JURISDICTION = "-jurisdiction";
   public static final String HTML_IN_MARKDOWN = "-html-in-markdown";
@@ -94,8 +116,8 @@ public class Params {
   public static final String DISABLE_DEFAULT_RESOURCE_FETCHER = "-disable-default-resource-fetcher";
   public static final String CHECK_IPS_CODES = "-check-ips-codes";
   public static final String BEST_PRACTICE = "-best-practice";
-  
-  
+  public static final String UNKNOWN_CODESYSTEMS_CAUSE_ERROR = "-unknown-codesystems-cause-errors";
+  public static final String NO_EXPERIMENTAL_CONTENT = "-no-experimental-content";
 
   public static final String RUN_TESTS = "-run-tests";
 
@@ -180,10 +202,38 @@ public class Params {
       } else if (args[i].equals(PROFILE)) {
         String p = null;
         if (i + 1 == args.length) {
-          throw new Error("Specified -profile without indicating profile source");
+          throw new Error("Specified -profile without indicating profile url");
         } else {
           p = args[++i];
           cliContext.addProfile(p);
+        }
+      } else if (args[i].equals(PROFILES)) {
+        String p = null;
+        if (i + 1 == args.length) {
+          throw new Error("Specified -profiles without indicating profile urls");
+        } else {
+          p = args[++i];
+          for (String s : p.split("\\,")) {
+            cliContext.addProfile(s);
+          }
+        }
+      } else if (args[i].equals(OPTION)) {
+        String p = null;
+        if (i + 1 == args.length) {
+          throw new Error("Specified -option without indicating option value");
+        } else {
+          p = args[++i];
+          cliContext.addOption(p);
+        }
+      } else if (args[i].equals(OPTIONS)) {
+        String p = null;
+        if (i + 1 == args.length) {
+          throw new Error("Specified -options without indicating option values");
+        } else {
+          p = args[++i];
+          for (String s : p.split("\\,")) {
+            cliContext.addOption(s);
+          }
         }
       } else if (args[i].equals(BUNDLE)) {
         String profile = null;
@@ -231,6 +281,10 @@ public class Params {
         cliContext.setDoNative(true);
       } else if (args[i].equals(ASSUME_VALID_REST_REF)) {
         cliContext.setAssumeValidRestReferences(true);
+      } else if (args[i].equals(CHECK_REFERENCES)) {
+        cliContext.setCheckReferences(true);
+      } else if (args[i].equals(RESOLUTION_CONTEXT)) {
+        cliContext.setResolutionContext(args[++i]);        
       } else if (args[i].equals(DEBUG)) {
         cliContext.setDoDebug(true);
       } else if (args[i].equals(SCT)) {
@@ -290,6 +344,42 @@ public class Params {
       } else if (args[i].equals(TO_VERSION)) {
         cliContext.setTargetVer(args[++i]);
         cliContext.setMode(EngineMode.VERSION);
+      } else if (args[i].equals(PACKAGE_NAME)) {
+        cliContext.setPackageName(args[++i]);
+        cliContext.setMode(EngineMode.CODEGEN);
+      } else if (args[i].equals(TX_PACK)) {
+        cliContext.setMode(EngineMode.RE_PACKAGE);
+        String pn = args[++i];
+        if (pn != null) {
+          if (pn.contains(",")) {
+            for (String s : pn.split("\\,")) {
+              cliContext.getIgs().add(s);              
+            }
+          } else {
+            cliContext.getIgs().add(pn);
+          }
+        }
+        cliContext.getModeParams().add("tx");
+        cliContext.getModeParams().add("expansions");
+      } else if (args[i].equals(RE_PACK)) {
+        cliContext.setMode(EngineMode.RE_PACKAGE);
+        String pn = args[++i];
+        if (pn != null) {
+          if (pn.contains(",")) {
+            for (String s : pn.split("\\,")) {
+              cliContext.getIgs().add(s);              
+            }
+          } else {
+            cliContext.getIgs().add(pn);
+          }
+        }
+        cliContext.getModeParams().add("tx");
+        cliContext.getModeParams().add("cnt");
+        cliContext.getModeParams().add("api");
+      } else if (args[i].equals(PIN)) {
+        cliContext.getModeParams().add("pin");
+      } else if (args[i].equals(EXPAND)) {
+        cliContext.getModeParams().add("expand");
       } else if (args[i].equals(DO_NATIVE)) {
         cliContext.setCanDoNative(true);
       } else if (args[i].equals(NO_NATIVE)) {
@@ -297,12 +387,21 @@ public class Params {
       } else if (args[i].equals(TRANSFORM)) {
         cliContext.setMap(args[++i]);
         cliContext.setMode(EngineMode.TRANSFORM);
+      } else if (args[i].equals(FORMAT)) {
+        cliContext.setFormat(FhirFormat.fromCode(args[++i]));
       } else if (args[i].equals(LANG_TRANSFORM)) {
         cliContext.setLangTransform(args[++i]);
         cliContext.setMode(EngineMode.LANG_TRANSFORM);
+      } else if (args[i].equals(EXP_PARAMS)) {
+        cliContext.setExpansionParameters(args[++i]);
       } else if (args[i].equals(COMPILE)) {
         cliContext.setMap(args[++i]);
         cliContext.setMode(EngineMode.COMPILE);
+      } else if (args[i].equals(CODEGEN)) {
+        cliContext.setMode(EngineMode.CODEGEN);
+      } else if (args[i].equals(FACTORY)) {
+        cliContext.setMode(EngineMode.FACTORY);
+        cliContext.setSource(args[++i]);
       } else if (args[i].equals(NARRATIVE)) {
         cliContext.setMode(EngineMode.NARRATIVE);
       } else if (args[i].equals(SPREADSHEET)) {
@@ -318,10 +417,19 @@ public class Params {
         cliContext.setSecurityChecks(true);
       } else if (args[i].equals(CRUMB_TRAIL)) {
         cliContext.setCrumbTrails(true);
+      } else if (args[i].equals(SHOW_MESSAGE_IDS)) {
+        cliContext.setShowMessageIds(true);
       } else if (args[i].equals(FOR_PUBLICATION)) {
         cliContext.setForPublication(true);
+      } else if (args[i].equals(AI_SERVICE)) {
+        cliContext.setAIService(args[++i]);
+      } else if (args[i].equals(UNKNOWN_CODESYSTEMS_CAUSE_ERROR)) {
+        cliContext.setUnknownCodeSystemsCauseErrors(true);
+      } else if (args[i].equals(NO_EXPERIMENTAL_CONTENT)) {
+        cliContext.setNoExperimentalContent(true);
       } else if (args[i].equals(VERBOSE)) {
         cliContext.setCrumbTrails(true);
+        cliContext.setShowMessageIds(true);
       } else if (args[i].equals(ALLOW_EXAMPLE_URLS)) {
         String bl = args[++i]; 
         if ("true".equals(bl)) {
@@ -331,10 +439,22 @@ public class Params {
         } else {
           throw new Error("Value for "+ALLOW_EXAMPLE_URLS+" not understood: "+bl);          
         }          
+      } else if (args[i].equals(TERMINOLOGY_ROUTING)) {
+        cliContext.setShowTerminologyRouting(true);
+      } else if (args[i].equals(TERMINOLOGY_CACHE_CLEAR)) {
+        cliContext.setClearTxCache(true);
       } else if (args[i].equals(SHOW_TIMES)) {
         cliContext.setShowTimes(true);
       } else if (args[i].equals(OUTPUT_STYLE)) {
         cliContext.setOutputStyle(args[++i]);
+      } else if (args[i].equals(ADVSIOR_FILE)) {
+        cliContext.setAdvisorFile(args[++i]);
+        File f = ManagedFileAccess.file(cliContext.getAdvisorFile());
+        if (!f.exists()) {
+          throw new Error("Cannot find advisor file "+cliContext.getAdvisorFile());
+        } else if (!Utilities.existsInList(Utilities.getFileExtension(f.getName()), "json", "txt")) {
+          throw new Error("Advisor file "+cliContext.getAdvisorFile()+" must be a .json or a .txt file");
+        }
       } else if (args[i].equals(SCAN)) {
         cliContext.setMode(EngineMode.SCAN);
       } else if (args[i].equals(TERMINOLOGY)) {

@@ -48,7 +48,7 @@ public class DiagnosticReportRenderer extends ResourceRenderer {
       } 
       h2.tx(") "); 
     } 
-    XhtmlNode tbl = x.table("grid"); 
+    XhtmlNode tbl = x.table("grid", false); 
     XhtmlNode tr; 
     if (dr.has("subject")) { 
       tr = tbl.tr(); 
@@ -99,7 +99,7 @@ public class DiagnosticReportRenderer extends ResourceRenderer {
     
     for (ResourceWrapper cont : dr.children("contained")) {
       x.hr();
-      RendererFactory.factory(cont, context.forContained()).buildNarrative(status, x, cont);
+      RendererFactory.factory(cont, context.forContained()).setInner(true).buildNarrative(status, x, cont);
     }
   } 
 
@@ -149,13 +149,13 @@ public class DiagnosticReportRenderer extends ResourceRenderer {
     if (r == null) 
       container.tx(context.formatPhrase(RenderingContext.DIAG_REP_REND_UNABLE)); 
     else if (r.getResource().fhirType().equals("Patient")) 
-      generatePatientSummary(container, r.getResource()); 
+      generatePatientSummary(status, container, r.getResource()); 
     else 
       container.tx(context.formatPhrase(RenderingContext.GENERAL_TODO)); 
   } 
 
-  private void generatePatientSummary(XhtmlNode c, ResourceWrapper r) throws FHIRFormatError, DefinitionException, FHIRException, IOException, EOperationOutcome { 
-    new PatientRenderer(context).describe(c, r); 
+  private void generatePatientSummary(RenderingStatus status, XhtmlNode c, ResourceWrapper r) throws FHIRFormatError, DefinitionException, FHIRException, IOException, EOperationOutcome { 
+    new PatientRenderer(context).buildSummary(status, c, r); 
   } 
 
   private List<ObservationNode> fetchObservations(List<ResourceWrapper> list) throws UnsupportedEncodingException, FHIRException, IOException { 
@@ -178,7 +178,7 @@ public class DiagnosticReportRenderer extends ResourceRenderer {
   } 
 
   private void buildObservationsTable(RenderingStatus status, XhtmlNode root, List<ObservationNode> observations, ResourceWrapper eff, ResourceWrapper iss) throws UnsupportedEncodingException, FHIRException, IOException { 
-    XhtmlNode tbl = root.table("grid"); 
+    XhtmlNode tbl = root.table("grid", false); 
     boolean refRange = scanObsForRefRange(observations); 
     boolean flags = scanObsForFlags(observations);  
     boolean note = scanObsForNote(observations); 

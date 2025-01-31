@@ -44,7 +44,6 @@ import java.util.Set;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
 import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerFactory;
@@ -67,6 +66,7 @@ import org.hl7.fhir.r5.model.ElementDefinition.PropertyRepresentation;
 import org.hl7.fhir.r5.model.Enumeration;
 import org.hl7.fhir.r5.model.StructureDefinition;
 import org.hl7.fhir.r5.utils.ToolingExtensions;
+import org.hl7.fhir.r5.utils.UserDataNames;
 import org.hl7.fhir.r5.utils.formats.XmlLocationAnnotator;
 import org.hl7.fhir.r5.utils.formats.XmlLocationData;
 import org.hl7.fhir.utilities.ElementDecoration;
@@ -94,6 +94,7 @@ import org.xml.sax.XMLReader;
 public class XmlParser extends ParserBase {
   private boolean allowXsiLocation;
   private String version;
+  private boolean elideElements;
 
   public XmlParser(IWorkerContext context) {
     super(context);
@@ -125,7 +126,7 @@ public class XmlParser extends ParserBase {
     ByteArrayInputStream stream = new ByteArrayInputStream(content);
     Document doc = null;
     try {
-      DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+      DocumentBuilderFactory factory = XMLUtil.newXXEProtectedDocumentBuilderFactory();
       // xxe protection
       factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
       factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
@@ -144,22 +145,16 @@ public class XmlParser extends ParserBase {
         stream.reset();
 
         // use a slower parser that keeps location data
-        TransformerFactory transformerFactory = TransformerFactory.newInstance();
+        TransformerFactory transformerFactory = XMLUtil.newXXEProtectedTransformerFactory();
         Transformer nullTransformer = transformerFactory.newTransformer();
         DocumentBuilder docBuilder = factory.newDocumentBuilder();
         doc = docBuilder.newDocument();
         DOMResult domResult = new DOMResult(doc);
-        SAXParserFactory spf = SAXParserFactory.newInstance();
+        SAXParserFactory spf = XMLUtil.newXXEProtectedSaxParserFactory();
         spf.setNamespaceAware(true);
         spf.setValidating(false);
-        // xxe protection
-        spf.setFeature("http://xml.org/sax/features/external-general-entities", false);
-        spf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-        SAXParser saxParser = spf.newSAXParser();
-        XMLReader xmlReader = saxParser.getXMLReader();
-        // xxe protection
-        xmlReader.setFeature("http://xml.org/sax/features/external-general-entities", false);
-        xmlReader.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+
+        XMLReader xmlReader = XMLUtil.getXXEProtectedXMLReader(spf);
 
         XmlLocationAnnotator locationAnnotator = new XmlLocationAnnotator(xmlReader, doc);
         InputSource inputSource = new InputSource(stream);
@@ -255,6 +250,8 @@ public class XmlParser extends ParserBase {
       return "sdtc:";
     if (ns.equals("urn:ihe:pharm"))
       return "pharm:";
+    if (ns.equals("http://ns.electronichealth.net.au/Ci/Cda/Extensions/3.0"))
+      return "ext:";
     return "?:";
   }
 
@@ -803,99 +800,134 @@ public class XmlParser extends ParserBase {
   }
 
   private void composeElement(IXMLWriter xml, Element element, String elementName, boolean root) throws IOException, FHIRException {
-    if (showDecorations) {
-      @SuppressWarnings("unchecked")
-      List<ElementDecoration> decorations = (List<ElementDecoration>) element.getUserData("fhir.decorations");
-      if (decorations != null)
-        for (ElementDecoration d : decorations)
-          xml.decorate(d);
-    }
-    for (String s : element.getComments()) {
-      xml.comment(s, true);
+    if (!(isElideElements() && element.isElided())) {
+      if (showDecorations) {
+        @SuppressWarnings("unchecked")
+        List<ElementDecoration> decorations = (List<ElementDecoration>) element.getUserData(UserDataNames.rendering_xml_decorations);
+        if (decorations != null)
+          for (ElementDecoration d : decorations)
+            xml.decorate(d);
+      }
+      for (String s : element.getComments()) {
+        xml.comment(s, true);
+      }
     }
     if (isText(element.getProperty())) {
-      if (linkResolver != null)
-        xml.link(linkResolver.resolveProperty(element.getProperty()));
-      xml.enter(element.getProperty().getXmlNamespace(),elementName);
-      if (linkResolver != null && element.getProperty().isReference()) {
-        String ref = linkResolver.resolveReference(getReferenceForElement(element));
-        if (ref != null) {
-          xml.externalLink(ref);
+      if (isElideElements() && element.isElided() && xml.canElide())
+        xml.elide();
+      else {
+        if (linkResolver != null)
+          xml.link(linkResolver.resolveProperty(element.getProperty()));
+        xml.enter(element.getProperty().getXmlNamespace(),elementName);
+        if (linkResolver != null && element.getProperty().isReference()) {
+          String ref = linkResolver.resolveReference(getReferenceForElement(element));
+          if (ref != null) {
+            xml.externalLink(ref);
+          }
         }
+        xml.text(element.getValue());
+        xml.exit(element.getProperty().getXmlNamespace(),elementName);
       }
-      xml.text(element.getValue());
-      xml.exit(element.getProperty().getXmlNamespace(),elementName);   
     } else if (!element.hasChildren() && !element.hasValue()) {
-      if (element.getExplicitType() != null)
-        xml.attribute("xsi:type", element.getExplicitType());
-      xml.element(elementName);
+      if (isElideElements() && element.isElided() && xml.canElide())
+        xml.elide();
+      else {
+        if (element.getExplicitType() != null)
+          xml.attribute("xsi:type", element.getExplicitType());
+        xml.element(elementName);
+      }
     } else if (element.isPrimitive() || (element.hasType() && isPrimitive(element.getType()))) {
       if (element.getType().equals("xhtml")) {
-        String rawXhtml = element.getValue();
-        if (isCdaText(element.getProperty())) {
-          new CDANarrativeFormat().convert(xml, new XhtmlParser().parseFragment(rawXhtml));
-        } else {
-          xml.escapedText(rawXhtml);
-          if (!markedXhtml) {
-            xml.anchor("end-xhtml");
-            markedXhtml = true;
+        if (isElideElements() && element.isElided() && xml.canElide())
+          xml.elide();
+        else {
+          String rawXhtml = element.getValue();
+          if (isCdaText(element.getProperty())) {
+            new CDANarrativeFormat().convert(xml, new XhtmlParser().parseFragment(rawXhtml));
+          } else {
+            xml.escapedText(rawXhtml);
+            if (!markedXhtml) {
+              xml.anchor("end-xhtml");
+              markedXhtml = true;
+            }
           }
         }
       } else if (isText(element.getProperty())) {
-        if (linkResolver != null)
-          xml.link(linkResolver.resolveProperty(element.getProperty()));
-        xml.text(element.getValue());
-      } else {
-        setXsiTypeIfIsTypeAttr(xml, element);
-        if (element.hasValue()) {
+        if (isElideElements() && element.isElided() && xml.canElide())
+          xml.elide();
+        else {
           if (linkResolver != null)
-            xml.link(linkResolver.resolveType(element.getType()));
-          xml.attribute("value", element.getValue());
+            xml.link(linkResolver.resolveProperty(element.getProperty()));
+          xml.text(element.getValue());
         }
-        if (linkResolver != null)
-          xml.link(linkResolver.resolveProperty(element.getProperty()));
-        if (element.hasChildren()) {
-          xml.enter(element.getProperty().getXmlNamespace(), elementName);
-          if (linkResolver != null && element.getProperty().isReference()) {
-            String ref = linkResolver.resolveReference(getReferenceForElement(element));
-            if (ref != null) {
-              xml.externalLink(ref);
-            }
+      } else {
+        if (isElideElements() && element.isElided())
+          xml.attributeElide();
+        else {
+          setXsiTypeIfIsTypeAttr(xml, element);
+          if (element.hasValue()) {
+            if (linkResolver != null)
+              xml.link(linkResolver.resolveType(element.getType()));
+            xml.attribute("value", element.getValue());
           }
-          for (Element child : element.getChildren()) 
-            composeElement(xml, child, child.getName(), false);
-          xml.exit(element.getProperty().getXmlNamespace(),elementName);
-        } else
-          xml.element(elementName);
+          if (linkResolver != null)
+            xml.link(linkResolver.resolveProperty(element.getProperty()));
+          if (element.hasChildren()) {
+            xml.enter(element.getProperty().getXmlNamespace(), elementName);
+            if (linkResolver != null && element.getProperty().isReference()) {
+              String ref = linkResolver.resolveReference(getReferenceForElement(element));
+              if (ref != null) {
+                xml.externalLink(ref);
+              }
+            }
+            for (Element child : element.getChildren())
+              composeElement(xml, child, child.getName(), false);
+            xml.exit(element.getProperty().getXmlNamespace(),elementName);
+          } else
+            xml.element(elementName);
+        }
       }
     } else {
-      setXsiTypeIfIsTypeAttr(xml, element);
-      Set<String> handled = new HashSet<>();
+      if (isElideElements() && element.isElided() && xml.canElide())
+        xml.elide();
+      else {
+        setXsiTypeIfIsTypeAttr(xml, element);
+        Set<String> handled = new HashSet<>();
       for (Element child : element.getChildren()) {
         if (!handled.contains(child.getName()) && isAttr(child.getProperty()) && wantCompose(element.getPath(), child)) {
           handled.add(child.getName());
-          String av = child.getValue();
-          if (child.getProperty().isList()) {
-            for (Element c2 : element.getChildren()) {
-              if (c2 != child && c2.getName().equals(child.getName())) {
-                av = av + " "+c2.getValue();
+          if (isElideElements() && child.isElided())
+            xml.attributeElide();
+          else {
+            String av = child.getValue();
+            if (child.getProperty().isList()) {
+              for (Element c2 : element.getChildren()) {
+                if (c2 != child && c2.getName().equals(child.getName())) {
+                  if (c2.isElided())
+                    av = av + " ...";
+                  else
+                    av = av + " " + c2.getValue();
+                }
               }
-            }            
+            }
+            if (linkResolver != null)
+              xml.link(linkResolver.resolveType(child.getType()));
+            if (ToolingExtensions.hasExtension(child.getProperty().getDefinition(), ToolingExtensions.EXT_DATE_FORMAT))
+              av = convertForDateFormatToExternal(ToolingExtensions.readStringExtension(child.getProperty().getDefinition(), ToolingExtensions.EXT_DATE_FORMAT), av);
+            xml.attribute(child.getProperty().getXmlNamespace(), child.getProperty().getXmlName(), av);
           }
-          if (linkResolver != null)
-            xml.link(linkResolver.resolveType(child.getType()));
-          if (ToolingExtensions.hasExtension(child.getProperty().getDefinition(), ToolingExtensions.EXT_DATE_FORMAT))
-            av = convertForDateFormatToExternal(ToolingExtensions.readStringExtension(child.getProperty().getDefinition(), ToolingExtensions.EXT_DATE_FORMAT), av);
-          xml.attribute(child.getProperty().getXmlNamespace(),child.getProperty().getXmlName(), av);
         }
       }
-      if (linkResolver != null)
-        xml.link(linkResolver.resolveProperty(element.getProperty()));
-      if (!xml.namespaceDefined(element.getProperty().getXmlNamespace())) {
-        String abbrev = makeNamespaceAbbrev(element.getProperty(), xml);
-        xml.namespace(element.getProperty().getXmlNamespace(), abbrev);
       }
-      xml.enter(element.getProperty().getXmlNamespace(), elementName);
+      if (!element.getProperty().getDefinition().hasExtension(ToolingExtensions.EXT_ID_CHOICE_GROUP)) {
+        if (linkResolver != null)
+          xml.link(linkResolver.resolveProperty(element.getProperty()));
+        if (!xml.namespaceDefined(element.getProperty().getXmlNamespace())) {
+          String abbrev = makeNamespaceAbbrev(element.getProperty(), xml);
+          xml.namespace(element.getProperty().getXmlNamespace(), abbrev);
+        }
+        xml.enter(element.getProperty().getXmlNamespace(), elementName);
+      }
 
       if (!root && element.getSpecial() != null) {
         if (linkResolver != null)
@@ -910,18 +942,24 @@ public class XmlParser extends ParserBase {
       }
       for (Element child : element.getChildren()) {
         if (wantCompose(element.getPath(), child)) {
-          if (isText(child.getProperty())) {
-            if (linkResolver != null)
-              xml.link(linkResolver.resolveProperty(element.getProperty()));
-            xml.text(child.getValue());
-          } else if (!isAttr(child.getProperty())) {
-            composeElement(xml, child, child.getName(), false);
+          if (isElideElements() && child.isElided() && xml.canElide())
+            xml.elide();
+          else {
+            if (isText(child.getProperty())) {
+              if (linkResolver != null)
+                xml.link(linkResolver.resolveProperty(element.getProperty()));
+              xml.text(child.getValue());
+            } else if (!isAttr(child.getProperty())) {
+              composeElement(xml, child, child.getName(), false);
+            }
           }
         }
       }
-      if (!root && element.getSpecial() != null)
-        xml.exit(element.getProperty().getXmlNamespace(),element.getType());
-      xml.exit(element.getProperty().getXmlNamespace(),elementName);
+      if (!element.getProperty().getDefinition().hasExtension(ToolingExtensions.EXT_ID_CHOICE_GROUP)) {
+        if (!root && element.getSpecial() != null)
+          xml.exit(element.getProperty().getXmlNamespace(),element.getType());
+        xml.exit(element.getProperty().getXmlNamespace(),elementName);
+      }
     }
   }
 
@@ -1028,4 +1066,13 @@ public class XmlParser extends ParserBase {
       // do nothing
     }
   }
+
+  public boolean isElideElements() {
+    return elideElements;
+  }
+
+  public void setElideElements(boolean elideElements) {
+    this.elideElements = elideElements;
+  }
+
 }

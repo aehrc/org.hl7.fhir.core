@@ -8,17 +8,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Set;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.NotImplementedException;
@@ -93,8 +84,9 @@ import org.hl7.fhir.validation.ValidationEngine;
 import org.hl7.fhir.validation.ValidatorUtils;
 import org.hl7.fhir.validation.cli.model.HtmlInMarkdownCheck;
 import org.hl7.fhir.validation.cli.services.StandAloneValidatorFetcher;
-import org.hl7.fhir.validation.instance.BasePolicyAdvisorForFullValidation;
 import org.hl7.fhir.validation.instance.InstanceValidator;
+import org.hl7.fhir.validation.instance.InstanceValidator.MatchetypeStatus;
+import org.hl7.fhir.validation.instance.advisor.BasePolicyAdvisorForFullValidation;
 import org.hl7.fhir.validation.tests.utilities.TestUtilities;
 import org.junit.AfterClass;
 import org.junit.Assert;
@@ -307,6 +299,18 @@ public class ValidationTests implements IEvaluationContext, IValidatorResourceFe
         }
       }
     }
+    if (content.has("supporting5")) {
+      for (JsonElement e : content.getAsJsonArray("supporting5")) {
+        String filename = e.getAsString();
+        String contents = TestingUtilities.loadTestResource("validator", filename);
+        CanonicalResource mr = (CanonicalResource) loadResource(filename, contents, "5.0.0");
+        logOutput("load resource "+mr.getUrl());
+        val.getContext().cacheResource(mr);
+        if (mr instanceof ImplementationGuide) {
+          val.getImplementationGuides().add((ImplementationGuide) mr);
+        }
+      }
+    }
     val.getBundleValidationRules().clear();
     if (content.has("bundle-param")) {
       val.getBundleValidationRules().add(new BundleValidationRule().setRule(content.getAsJsonObject("bundle-param").get("rule").getAsString()).setProfile( content.getAsJsonObject("bundle-param").get("profile").getAsString()));
@@ -362,8 +366,14 @@ public class ValidationTests implements IEvaluationContext, IValidatorResourceFe
     if (content.has("security-checks")) {
       val.setSecurityChecks(content.get("security-checks").getAsBoolean());
     }
+    if (content.has("no-experimental-content")) {
+      val.setNoExperimentalContent(content.get("no-experimental-content").getAsBoolean());
+    }
     if (content.has("noHtmlInMarkdown")) {
       val.setHtmlInMarkdownCheck(HtmlInMarkdownCheck.ERROR);
+    }
+    if (content.has("matchetype")) {
+      val.setMatchetypeStatus(MatchetypeStatus.Required);
     }
     List<String> suppress = new ArrayList<>();
     if (content.has("suppress")) {
@@ -526,6 +536,10 @@ public class ValidationTests implements IEvaluationContext, IValidatorResourceFe
   }
 
   public Resource loadResource(String filename, String contents) throws IOException, FHIRFormatError, FileNotFoundException, FHIRException, DefinitionException {
+    return loadResource(filename, contents, version);
+  }
+  
+  public Resource loadResource(String filename, String contents, String version) throws IOException, FHIRFormatError, FileNotFoundException, FHIRException, DefinitionException {  
     try (InputStream inputStream = IOUtils.toInputStream(contents, Charsets.UTF_8)) {
       if (filename.contains(".json")) {
         if (Constants.VERSION.equals(version) || "5.0".equals(version))
@@ -855,7 +869,7 @@ public class ValidationTests implements IEvaluationContext, IValidatorResourceFe
 
   @Override
   public byte[] fetchRaw(IResourceValidator validator, String source) throws MalformedURLException, IOException {
-    HTTPResult res = ManagedWebAccess.get(source);
+    HTTPResult res = ManagedWebAccess.get(Arrays.asList("web"), source);
     res.checkThrowException();
     return res.getContent();
   }
@@ -917,4 +931,29 @@ public class ValidationTests implements IEvaluationContext, IValidatorResourceFe
       return null;
     }
   }
+
+  @Override
+  public boolean isSuppressMessageId(String path, String messageId) {
+    return false;
+  }
+
+  @Override
+  public ReferenceValidationPolicy getReferencePolicy() {
+    return ReferenceValidationPolicy.IGNORE;
+  }
+
+  public IValidationPolicyAdvisor getPolicyAdvisor() {
+    return null;
+  }
+
+  public IValidationPolicyAdvisor setPolicyAdvisor(IValidationPolicyAdvisor policyAdvisor) {
+    throw new Error("This policy advisor is the test advisor");
+  }
+
+  @Override
+  public SpecialValidationAction policyForSpecialValidation(IResourceValidator validator, Object appContext,
+      SpecialValidationRule rule, String stackPath, Element resource, Element element) {
+    return SpecialValidationAction.CHECK_RULE;
+  }
+  
 }
